@@ -15,4 +15,5 @@ Copy-Item -LiteralPath $Plugin -Destination (Join-Path $stage 'LivingPastStage0.
 $output = Join-Path $PSScriptRoot '../dist/LivingPast-Stage0A.zip'
 New-Item -ItemType Directory -Force -Path (Split-Path $output) | Out-Null
 Compress-Archive -Path (Join-Path $stage 'Magelight'), (Join-Path $stage 'Scripts'), (Join-Path $stage 'LivingPastStage0.esp') -DestinationPath $output -Force
-Write-Output "Created $output. Verify the archive contents before installation."
+& (Join-Path $PSScriptRoot 'validate-package.ps1') -Archive $output
+Write-Output "Created $output."

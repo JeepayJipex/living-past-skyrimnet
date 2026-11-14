@@ -6,7 +6,7 @@ Stage 0 is a set of technical spikes, not a release. The first implementation sl
 
 **Implemented for review:** Vite/TypeScript page, hidden Magelight manifest panel, manual Insert binding, UI event stream, Papyrus alias source, and a browser preview. The source does not mutate game or save state.
 
-**Game setup still required:**
+**Automated checks:** `npm test` checks protocol correlation, mismatched payloads, duplicates, malformed replies, timeout and out-of-order delivery. `npm run build` checks TypeScript and builds the UI. `pwsh -NoProfile -File tests/package-validation.ps1` checks the archive validator with test fixtures. These checks do not compile Papyrus or validate ESP/PEX contents.
 
 ### Create the local test artifacts
 
@@ -22,18 +22,16 @@ Check the compiler exit status and ensure `LP_S0_PlayerAlias.pex` exists. Run `n
 
 ### Manual validation (not yet executed)
 
-1. Install a compatible Magelight UI build and its required SKSE/Address Library dependencies in an isolated MO2 test profile. Record exact versions.
-2. Build the UI with `npm ci` and `npm run build`. Install the contents of `build/Data/` as an MO2 test mod so the game sees `Data/Magelight/LivingPast/manifest.json`.
-3. Launch a disposable save. Verify that no panel appears automatically. Press Insert to open it, edit both fields, press both test buttons, then close with the button, Insert, and Escape in separate runs. Check that movement and keyboard input return to Skyrim each time.
-4. For bridge testing, compile `Source/Scripts/LP_S0_PlayerAlias.psc` with Magelight's `Magelight.psc` and the Skyrim/SKSE script sources. Attach it to a player-filled ReferenceAlias in a start-game-enabled test quest in a disposable plugin. Install the compiled PEX and plugin in the test profile.
-5. Repeat step 3. The UI must show `Papyrus bridge connected`, and each event must show a matching request ID and `Verified` after editing the fields. Check `Magelight.log` and the Papyrus log for errors. Test after a full game restart and save reload.
-6. Test while a game menu, console, loading screen, and controlled scene are active. Record whether the host refuses opening and whether focus returns normally. Record any hotkey collision and rebind through Magelight's configuration if needed.
+1. Install the archive created above and compatible Magelight, SKSE and Address Library versions in a disposable MO2 profile. Record exact versions and enable the test plugin.
+2. Launch and load a disposable save, including an alternate start if available. Confirm that no window opens automatically.
+3. Press Insert, edit both fields and press both test buttons. Confirm each displayed request ID receives a matching `Verified` response; Apply is a dry run.
+4. Close with the button, reopen and close with Insert, then reopen and close with Escape. After each close check movement, keyboard, mouse and camera controls. If the bridge is unavailable, check that the Close button is disabled and use Insert or Escape.
+5. Save and reload, then restart Skyrim completely and repeat the open, exchange and close checks. Check that gameplay state did not change.
+6. Inspect Magelight and Papyrus logs for errors without recording biography text. Test alongside another UI mod, and attempt opening during a game menu, console, loading screen and controlled scene. Record refused opens, focus behavior and hotkey collisions.
 
 **Evidence to retain:** exact dependency versions; MO2 test profile label in a private note; log excerpts with biography text removed; screenshots or video of opening, exchange, closing, and returned controls; pass/fail for each step. Do not place personal paths or profile names in tracked files.
 
 **Exit condition:** the panel opens only on demand, JSON travels in both directions, and closing does not leave input captured. Any failed capability stays unclaimed.
-
-Record mouse, keyboard, movement and camera control after closing by button, Insert, and Escape. Check a disposable save before and after the test for unexpected gameplay changes. Test alongside another UI mod. If the bridge is unavailable, the Close button must remain disabled; use Insert or Escape. Verify no window opens automatically on game launch or alternate start initialization. Record every result and exact dependency versions.
 
 ## S0-B — SkyrimNet projection
 

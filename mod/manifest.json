@@ -1,0 +1,19 @@
+{
+  "modId": "LivingPast",
+  "name": "Living Past Stage 0 UI Spike",
+  "version": "0.0.1",
+  "minHost": "1.8.0",
+  "session": "isolated",
+  "network": "file",
+  "views": {
+    "spike": {
+      "path": "views/spike/index.html",
+      "layer": "panel",
+      "fullscreen": true,
+      "startVisible": false,
+      "loadOnShow": true,
+      "hotkey": "Insert",
+      "hotkeyPause": true
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "gameRoot": null,
+  "mo2": {
+    "testProfile": null,
+    "modsDirectory": null
+  },
+  "tools": {
+    "creationKit": null,
+    "papyrusCompiler": null,
+    "papyrusFlags": null,
+    "papyrusImportDirectories": []
+  },
+  "logs": {
+    "skseDirectory": null,
+    "papyrusLog": null
+  }
+}

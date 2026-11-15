@@ -316,6 +316,10 @@ Event OnLivingPastClose(string eventName, string strArg, float numArg, Form send
     If numArg as int != viewId
         Return
     EndIf
+    probeSession = ""
+    probePrepared = False
+    probeText = ""
+    probeLength = 0
     If Magelight.GetUIModeView() == viewId
         Magelight.ReleaseUIMode("LivingPast")
     EndIf

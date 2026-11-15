@@ -1,1 +1,1 @@
-{"id":"jeepayjipex.living-past","type":"bundle","title":"Living Past","author":"jeepayjipex","version":"0.1.0","min_skyrimnet_version":"1.1.1","description":"Save-bound relationship context for Ysolda.","mods":[{"name":"Living Past","file":"LivingPastStage0.esp","required":true}]}
+{"id":"jeepayjipex.living-past","type":"bundle","title":"Living Past","author":"jeepayjipex","version":"0.2.0","min_skyrimnet_version":"1.1.1","description":"Milestone 3 Ysolda technical validation probe.","mods":[{"name":"Living Past","file":"LivingPastStage0.esp","required":true}]}

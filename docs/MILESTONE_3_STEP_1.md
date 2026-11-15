@@ -2,6 +2,27 @@
 
 This package is an experimental Ysolda-only probe. It uses new StorageUtil keys and replaces the Stage 0-B prompt layer in the package. The previous Stage 0-B value remains stored but is not projected by this probe. Install it as an MO2 replacement on a disposable profile. Preserve matching `.ess` and `.skse` files before testing.
 
+## Build and install
+
+From the repository root in PowerShell, set these variables to the local Creation Kit, Papyrus import, SkyrimNet DevKit, base content and Stage 0 ESP locations. The ESP must contain the existing player-alias quest.
+
+```powershell
+$compiler = 'C:/path/to/Papyrus Compiler/PapyrusCompiler.exe'
+$flags = 'C:/path/to/TESV_Papyrus_Flags.flg'
+$imports = @('C:/path/to/SKSE', 'C:/path/to/Magelight', 'C:/path/to/PapyrusUtil', 'C:/path/to/vanilla/scripts')
+$plugin = 'C:/path/to/LivingPastStage0.esp'
+$validator = 'C:/path/to/1.1.1/tools/content-validate.exe'
+$baseTree = 'C:/path/to/skyrimnet.base'
+npm ci
+npm test
+pwsh -NoProfile -File tests/package-validation.ps1
+./scripts/compile.ps1 -Compiler $compiler -Flags $flags -ImportDirectories $imports -OutputDirectory './build/probe/Scripts'
+./scripts/package.ps1 -Plugin $plugin -Pex './build/probe/Scripts/LP_S0_PlayerAlias.pex' -ContentValidator $validator -BaseTree $baseTree
+./scripts/validate-package.ps1 -Archive './dist/LivingPast-M3-Step1-Probe.zip'
+```
+
+Install the ZIP in MO2 and choose Replace for the existing Living Past mod. Disable other Stage 0-B copies. In MO2's Data tab inspect the winning origins for `LivingPastStage0.esp`, `Scripts/LP_S0_PlayerAlias.pex`, the Magelight view, and `SKSE/Plugins/SkyrimNet/external/jeepayjipex.living-past/manifest.json` and `prompts/submodules/system_head/0651_living_past_probe.prompt`. Search the virtual Data tree for `0651_living_past_relationship.prompt` and ensure no enabled mod supplies the old file. Replacing a different MO2 mod folder can leave an older enabled copy winning independently.
+
 ## Native biography
 
 In SkyrimNet 1.1.1 open Characters, select the player and inspect the Static, Save-Specific and Dynamic tabs. Use distinct harmless markers to identify the effective layer. Save-Specific begins from Static where no save copy exists. The dashboard selects Dynamic when present, then Save-Specific, then Static. Confirm actual rendering because editor selection does not establish the engine's behavior. Edit the effective biography while preserving existing text, save, reopen and verify. With a disposable save, run Dynamic Update, inspect the resulting Dynamic tab and verify which existing facts remain. SkyrimNet owns these files. This probe does not write them.

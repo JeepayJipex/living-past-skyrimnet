@@ -13,12 +13,13 @@ let session = '';
 let sequence = 0;
 let ready = false;
 let busy = false;
+let generation = 0;
 let pending: { id: string; op: string; resolve: (text: string) => void; reject: (reason: Error) => void; timer: number } | undefined;
 
 function update(): void {
   count.textContent = `${bytes(description.value)} / 2048 bytes`;
   apply.disabled = !ready || busy;
-  close.disabled = !ready || busy;
+  close.disabled = false;
 }
 function request(op: string, value = ''): Promise<string> {
   if (!window.magelight || !session || pending || bytes(value) > 160) return Promise.reject(new Error('Bridge unavailable'));
@@ -43,7 +44,9 @@ window.lpReceive = (frame: string): void => {
 };
 async function read(slot: string): Promise<string> {
   let result = '';
+  const readGeneration = generation;
   while (true) {
+    if (readGeneration !== generation) throw new Error('Session closed');
     const part = await request('R', slot + String(bytes(result)).padStart(4, '0'));
     if (!part) return result;
     result += part;
@@ -51,6 +54,7 @@ async function read(slot: string): Promise<string> {
   }
 }
 async function open(): Promise<void> {
+  const currentGeneration = ++generation;
   if (pending) { clearTimeout(pending.timer); pending.reject(new Error('Session closed')); pending = undefined; }
   session = ''; ready = false; busy = false; description.value = ''; update();
   if (!window.magelight) { status.textContent = 'Browser preview'; return; }
@@ -59,33 +63,60 @@ async function open(): Promise<void> {
   sequence = 0;
   try {
     await request('O');
-    description.value = await read('0');
+    if (currentGeneration !== generation) return;
+    const active = await read('0');
+    if (currentGeneration !== generation) return;
+    description.value = active;
     ready = true; status.textContent = 'Connected';
     feedback.textContent = 'Active probe loaded. Save your game after activation.';
-  } catch (error) { status.textContent = 'Unavailable'; feedback.textContent = String(error); }
+  } catch (error) { if (currentGeneration !== generation) return; status.textContent = 'Unavailable'; feedback.textContent = String(error); }
   update();
 }
 apply.addEventListener('click', async () => {
+  const currentGeneration = generation;
+  const text = description.value;
+  let chunks: string[];
   try {
-    const text = description.value;
-    const chunks = splitNarrative(text);
+    chunks = splitNarrative(text);
+  } catch (error) {
+    feedback.textContent = String(error);
+    return;
+  }
+  try {
     busy = true; update();
     await request('B', String(bytes(text)).padStart(4, '0'));
     let offset = 0;
     for (const chunk of chunks) {
+      if (currentGeneration !== generation) return;
       const payload = String(offset).padStart(4, '0') + chunk;
       if (await request('D', payload) !== payload) throw new Error('Chunk mismatch');
       offset += bytes(chunk);
     }
+    if (currentGeneration !== generation) return;
     await request('S');
+    if (currentGeneration !== generation) return;
     if (await read('3') !== text) throw new Error('Storage readback mismatch');
+    if (currentGeneration !== generation) return;
     await request('K');
+    if (currentGeneration !== generation) return;
     if (await read('0') !== text) throw new Error('Activation readback mismatch');
     feedback.textContent = 'Probe activated and read back. Save your game.';
-  } catch (error) { ready = false; feedback.textContent = String(error) + ' Reopen to check active state.'; }
+  } catch (error) { if (currentGeneration !== generation) return; ready = false; feedback.textContent = String(error) + ' Reopen to check active state.'; }
   busy = false; update();
 });
 description.addEventListener('input', update);
-close.addEventListener('click', () => window.magelight?.send('lpClose', 'close'));
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void open(); else { session = ''; ready = false; update(); } });
+function cancelSession(): void {
+  generation += 1;
+  session = '';
+  ready = false;
+  if (pending) {
+    const current = pending;
+    pending = undefined;
+    clearTimeout(current.timer);
+    current.reject(new Error('Session closed. Reopen to check active state.'));
+  }
+  update();
+}
+close.addEventListener('click', () => { cancelSession(); window.magelight?.send('lpClose', 'close'); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void open(); else cancelSession(); });
 if (document.visibilityState === 'visible') void open();

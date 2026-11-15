@@ -3,6 +3,14 @@ Scriptname LP_S0_PlayerAlias extends ReferenceAlias
 
 int viewId
 string relationshipKey = "LivingPast.Stage0B.Relationship"
+string probeSession = ""
+string probeText = ""
+int probeLength = 0
+int probeSlot = 0
+int probePrevious = 0
+bool probePrepared = False
+int probeSequence = 0
+int probeReadOffset = 0
 
 Event OnInit()
     Setup()
@@ -13,6 +21,10 @@ Event OnPlayerLoadGame()
 EndEvent
 
 Function Setup()
+    probeSession = ""
+    probePrepared = False
+    probeSequence = 0
+    probeText = ""
     RegisterForModEvent("Magelight_ViewDomReady", "OnLivingPastDomReady")
     RegisterForModEvent("Magelight_JS_lpEvent", "OnLivingPastEvent")
     RegisterForModEvent("Magelight_JS_lpClose", "OnLivingPastClose")
@@ -77,6 +89,10 @@ EndFunction
 
 Event OnLivingPastEvent(string eventName, string frame, float numArg, Form sender)
     If numArg as int != viewId || StringUtil.GetLength(frame) < 31
+        Return
+    EndIf
+    If StringUtil.Substring(frame, 0, 2) == "3|"
+        ProbeEvent(frame)
         Return
     EndIf
     ; Fixed ASCII header is inspected independently of the UTF-8 payload.
@@ -154,6 +170,147 @@ Event OnLivingPastEvent(string eventName, string frame, float numArg, Form sende
     EndIf
     Magelight.Call(viewId, "lpReceive", "2|" + requestId + "|" + op + "|" + responseStatus + "|" + sizeText + "|" + value)
 EndEvent
+
+; The probe uses inactive slots and publishes only after explicit verified readback.
+Function ProbeEvent(string frame)
+    If !Magelight.IsVisible(viewId) || StringUtil.GetLength(frame) < 31
+        Return
+    EndIf
+    string id = StringUtil.Substring(frame, 2, 20)
+    string session = StringUtil.Substring(id, 0, 16)
+    string op = StringUtil.Substring(frame, 23, 1)
+    string n = StringUtil.Substring(frame, 27, 3)
+    int i = 0
+    While i < 20
+        string c = StringUtil.Substring(id, i, 1)
+        If (i < 16 && StringUtil.Find("0123456789abcdef", c) < 0) || (i >= 16 && StringUtil.Find("0123456789", c) < 0)
+            Return
+        EndIf
+        i += 1
+    EndWhile
+    i = 0
+    While i < 3
+        If StringUtil.Find("0123456789", StringUtil.Substring(n, i, 1)) < 0
+            Return
+        EndIf
+        i += 1
+    EndWhile
+    int size = n as int
+    If StringUtil.Substring(frame, 22, 1) != "|" || StringUtil.Substring(frame, 24, 3) != "|Q|" || StringUtil.Substring(frame, 30, 1) != "|" || size > 160 || StringUtil.GetLength(frame) != 31 + size
+        Return
+    EndIf
+    Actor npc = Game.GetFormFromFile(0x0001A69A, "Skyrim.esm") as Actor
+    ActorBase expected = Game.GetFormFromFile(0x00013BAB, "Skyrim.esm") as ActorBase
+    If !npc || !expected || npc.GetActorBase() != expected || PapyrusUtil.GetVersion() <= 0
+        ProbeReply(id, op, False, "")
+        Return
+    EndIf
+    string arg = StringUtil.Substring(frame, 31)
+    string markerKey = "LivingPast.Probe.Active"
+    int active = StorageUtil.GetIntValue(npc, markerKey, 0)
+    bool ok = False
+    string result = ""
+    int requestSequence = StringUtil.Substring(id, 16, 4) as int
+    If op == "O" && size == 0 && requestSequence == 1
+        probeSession = session
+        probeSequence = 1
+        probePrepared = False
+        probeText = ""
+        probeLength = 0
+        result = active as string
+        ok = True
+    ElseIf session == probeSession && requestSequence == probeSequence + 1 && Magelight.IsVisible(viewId)
+        probeSequence = requestSequence
+        int numericCount = 0
+        If op == "B" || op == "D"
+            numericCount = 4
+        ElseIf op == "R"
+            numericCount = 5
+        EndIf
+        i = 0
+        While i < numericCount
+            If i >= size || StringUtil.Find("0123456789", StringUtil.Substring(arg, i, 1)) < 0
+                ProbeReply(id, op, False, "")
+                Return
+            EndIf
+            i += 1
+        EndWhile
+        If op == "B" && size == 4
+            probeLength = arg as int
+            probeText = ""
+            probePrepared = False
+            probePrevious = active
+            probeSlot = 1
+            If active == 1
+                probeSlot = 2
+            EndIf
+            ok = probeLength > 0 && probeLength <= 2048
+        ElseIf op == "D" && size > 4 && probeLength > 0 && !probePrepared
+            int offset = StringUtil.Substring(arg, 0, 4) as int
+            string part = StringUtil.Substring(arg, 4)
+            If offset == StringUtil.GetLength(probeText) && StringUtil.GetLength(probeText) + StringUtil.GetLength(part) <= probeLength
+                probeText += part
+                result = arg
+                ok = True
+            EndIf
+        ElseIf op == "S" && size == 0 && probeLength > 0 && StringUtil.GetLength(probeText) == probeLength && active == probePrevious
+            StorageUtil.SetStringValue(npc, "LivingPast.Probe.Slot" + probeSlot, probeText)
+            probePrepared = True
+            probeReadOffset = 0
+            ok = True
+        ElseIf op == "R" && size == 5
+            int slot = StringUtil.Substring(arg, 0, 1) as int
+            int offset = StringUtil.Substring(arg, 1, 4) as int
+            bool readingProbe = slot == 3
+            If (slot == 0 && active > 0) || (readingProbe && probePrepared && offset == probeReadOffset)
+                If slot == 0
+                    slot = active
+                Else
+                    slot = probeSlot
+                EndIf
+                string saved = StorageUtil.GetStringValue(npc, "LivingPast.Probe.Slot" + slot, "")
+                If offset <= StringUtil.GetLength(saved)
+                    int take = 128
+                    If offset + take > StringUtil.GetLength(saved)
+                        take = StringUtil.GetLength(saved) - offset
+                    Else
+                        While take > 0 && ByteAt(saved, offset + take) >= 128 && ByteAt(saved, offset + take) <= 191
+                            take -= 1
+                        EndWhile
+                    EndIf
+                    result = StringUtil.Substring(saved, offset, take)
+                    If readingProbe
+                        probeReadOffset += take
+                    EndIf
+                    ok = True
+                EndIf
+            ElseIf slot == 0 && active == 0 && offset == 0
+                ok = True
+            EndIf
+        ElseIf op == "K" && size == 0 && probePrepared && probeReadOffset == probeLength && active == probePrevious
+            StorageUtil.SetIntValue(npc, markerKey, probeSlot)
+            ok = StorageUtil.GetIntValue(npc, markerKey, 0) == probeSlot
+            probePrepared = False
+            probeLength = 0
+        EndIf
+    EndIf
+    ProbeReply(id, op, ok, result)
+EndFunction
+
+Function ProbeReply(string id, string op, bool ok, string value)
+    string status = "E"
+    If ok
+        status = "S"
+    EndIf
+    int count = StringUtil.GetLength(value)
+    string n = count as string
+    If count < 10
+        n = "00" + n
+    ElseIf count < 100
+        n = "0" + n
+    EndIf
+    Magelight.Call(viewId, "lpReceive", "3|" + id + "|" + op + "|" + status + "|" + n + "|" + value)
+EndFunction
 
 Event OnLivingPastClose(string eventName, string strArg, float numArg, Form sender)
     If numArg as int != viewId

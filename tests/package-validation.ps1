@@ -10,7 +10,7 @@ function Make-Fixture([bool]$includePex, [bool]$includeJs, [string]$omitContent 
         $entries = @{
             'LivingPastStage0.esp' = 'fixture only'
             'SKSE/Plugins/SkyrimNet/external/jeepayjipex.living-past/manifest.json' = '{}'
-            'SKSE/Plugins/SkyrimNet/external/jeepayjipex.living-past/prompts/submodules/character_bio/0651_living_past_relationship.prompt' = 'fixture'
+            'SKSE/Plugins/SkyrimNet/external/jeepayjipex.living-past/prompts/submodules/system_head/0651_living_past_probe.prompt' = 'fixture'
             'Magelight/LivingPast/manifest.json' = '{}'
             'Magelight/LivingPast/views/spike/index.html' = '<script src="./assets/app.js"></script><link href="./assets/app.css">'
             'Magelight/LivingPast/views/spike/assets/app.css' = 'fixture'
@@ -40,7 +40,7 @@ try {
     if (-not $rejected) { throw 'A package without a referenced asset was accepted.' }
     foreach ($missing in @(
         'SKSE/Plugins/SkyrimNet/external/jeepayjipex.living-past/manifest.json',
-        'SKSE/Plugins/SkyrimNet/external/jeepayjipex.living-past/prompts/submodules/character_bio/0651_living_past_relationship.prompt'
+        'SKSE/Plugins/SkyrimNet/external/jeepayjipex.living-past/prompts/submodules/system_head/0651_living_past_probe.prompt'
     )) {
         Remove-Item -LiteralPath $archive
         Make-Fixture $true $true $missing

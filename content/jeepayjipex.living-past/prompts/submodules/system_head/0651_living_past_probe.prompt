@@ -1,0 +1,20 @@
+{# Experimental direct-dialogue probe, limited to Ysolda's placed reference. #}
+{% if render_mode == "full" and default(task_at_end, false) and not exists("stealthHiddenPlayer") %}
+{% if exists("npc") and existsIn(npc, "UUID") and exists("responseTarget") and responseTarget and responseTarget.UUID != 0 %}
+{% set ysolda = formid_to_uuid(108186) %}
+{% if ysolda != 0 and npc.UUID == ysolda and is_player(responseTarget.UUID) %}
+{% set slot = papyrus_util("GetIntValue", npc.UUID, "LivingPast.Probe.Active", 0) %}
+{% if slot == 1 %}
+{% set history = papyrus_util("GetStringValue", npc.UUID, "LivingPast.Probe.Slot1", "") %}
+{% else if slot == 2 %}
+{% set history = papyrus_util("GetStringValue", npc.UUID, "LivingPast.Probe.Slot2", "") %}
+{% else %}
+{% set history = "" %}
+{% endif %}
+{% if length(history) > 0 %}
+## Your prior history with the player
+{{ replace(replace(history, "[", "("), "]", ")") }}
+{% endif %}
+{% endif %}
+{% endif %}
+{% endif %}

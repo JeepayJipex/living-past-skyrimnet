@@ -7,5 +7,6 @@ export default defineConfig({
     outDir: '../build/Data/Magelight/LivingPast/views/spike',
     emptyOutDir: true,
     target: 'es2022',
+    modulePreload: { polyfill: false },
   },
 });

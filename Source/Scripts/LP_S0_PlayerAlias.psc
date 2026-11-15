@@ -39,23 +39,35 @@ Event OnLivingPastDomReady(string eventName, string strArg, float numArg, Form s
     If numArg as int != viewId
         Return
     EndIf
-    Magelight.Call(viewId, "lpReceive", "{\"protocol\":1,\"type\":\"bridge.ready\"}")
+    ; The page initiates a new request when it opens.
 EndEvent
 
 Event OnLivingPastEvent(string eventName, string strArg, float numArg, Form sender)
     If numArg as int != viewId
         Return
     EndIf
-    ; The payload is JSON. This spike checks transport only and does not parse or save it.
-    ; Do not log the payload: it may contain the test biography.
-    Debug.Trace("[LivingPast:S0] Received UI JSON event")
-    Magelight.Call(viewId, "lpReceive", "{\"protocol\":1,\"type\":\"ack\"}")
+    ; The page generates alphanumeric IDs. Never log the request payload.
+    int start = StringUtil.Find(strArg, "\"id\":\"")
+    If start < 0
+        Return
+    EndIf
+    start += 6
+    int finish = StringUtil.Find(strArg, "\"", start)
+    If finish <= start
+        Return
+    EndIf
+    string requestId = StringUtil.Substring(strArg, start, finish - start)
+    Magelight.Call(viewId, "lpReceive", "{\"protocol\":1,\"correlationId\":\"" + requestId + "\",\"type\":\"echo\",\"status\":\"ok\",\"request\":" + strArg + "}")
 EndEvent
 
 Event OnLivingPastClose(string eventName, string strArg, float numArg, Form sender)
     If numArg as int != viewId
         Return
     EndIf
-    Magelight.ReleaseUIMode("LivingPast")
-    Magelight.ShowView(viewId, False)
+    If Magelight.GetUIModeView() == viewId
+        Magelight.ReleaseUIMode("LivingPast")
+    EndIf
+    If Magelight.IsVisible(viewId)
+        Magelight.ShowView(viewId, False)
+    EndIf
 EndEvent

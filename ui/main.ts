@@ -1,89 +1,70 @@
 import './style.css';
-
-type MagelightBridge = {
-  send: (channel: string, payload: string) => void;
-};
-
-declare global {
-  interface Window {
-    magelight?: MagelightBridge;
-    lpReceive?: (payload: string) => void;
-  }
-}
-
-type EventName = 'open' | 'draft.changed' | 'validate' | 'apply' | 'close';
-
+import { Protocol, type EventName } from './protocol';
+declare global { interface Window { magelight?: { send(channel: string, payload: string): void }; lpReceive?: (payload: string) => void } }
 const origin = document.querySelector<HTMLInputElement>('#origin')!;
 const biography = document.querySelector<HTMLTextAreaElement>('#biography')!;
 const status = document.querySelector<HTMLElement>('#bridge-status')!;
 const feedback = document.querySelector<HTMLElement>('#draft-feedback')!;
 const eventLog = document.querySelector<HTMLOListElement>('#event-log')!;
-let papyrusReady = false;
-
+const closeButton = document.querySelector<HTMLButtonElement>('#close')!;
+const timers = new Map<string, ReturnType<typeof setTimeout>>();
+let protocol: Protocol | undefined;
+let draftTimer: ReturnType<typeof setTimeout> | undefined;
+let lastDraft = '';
 function log(message: string): void {
-  const item = document.createElement('li');
-  item.textContent = message;
-  eventLog.prepend(item);
+  const item = document.createElement('li'); item.textContent = message; eventLog.prepend(item);
   while (eventLog.children.length > 8) eventLog.lastElementChild?.remove();
 }
-
-function emit(type: EventName): void {
-  const payload = JSON.stringify({
-    protocol: 1,
-    type,
-    draft: { origin: origin.value.trim(), biography: biography.value.trim() },
-  });
-  if (!window.magelight) {
-    log(`Preview only: ${type}`);
-    return;
-  }
-  window.magelight.send('lpEvent', payload);
-  if (type === 'close') window.magelight.send('lpClose', '{"protocol":1,"type":"close"}');
-  log(`Sent: ${type}`);
-  if (!papyrusReady) status.textContent = 'Papyrus bridge pending';
+function connection(value: boolean): void {
+  closeButton.disabled = !value;
+  status.textContent = value ? 'Papyrus bridge connected' : window.magelight ? 'Papyrus bridge unavailable — use Insert or Escape to close' : 'Browser preview';
 }
-
-window.lpReceive = (payload: string): void => {
-  try {
-    const response: unknown = JSON.parse(payload);
-    if (typeof response !== 'object' || response === null || !('type' in response)) {
-      throw new Error('Missing response type');
-    }
-    const type = (response as { type: unknown }).type;
-    if (typeof type !== 'string') throw new Error('Invalid response type');
-    if (type === 'bridge.ready') {
-      papyrusReady = true;
-      status.textContent = 'Papyrus bridge connected';
-    }
-    log(`Received: ${type}`);
-  } catch {
-    log('Received an invalid bridge response');
-  }
+function send(type: EventName): void {
+  if (!window.magelight) { log(`Preview only: ${type}`); return; }
+  if (!protocol || document.visibilityState !== 'visible') return;
+  const current = protocol;
+  const request = current.request(type, { origin: origin.value, biography: biography.value });
+  const serialized = JSON.stringify(request);
+  const timer = setTimeout(() => { timers.delete(request.id); if (current.timeout(request.id)) log(`Timed out: ${type} (${request.id})`); }, 5000);
+  timers.set(request.id, timer);
+  window.magelight.send('lpEvent', serialized);
+  log(`Sent: ${type} (${request.id})`);
+}
+window.lpReceive = (raw: string): void => {
+  const result = protocol?.receive(raw);
+  if (!result) return;
+  if (result.kind !== 'verified') { log(`Ignored response: ${result.kind}`); return; }
+  const { request } = result;
+  clearTimeout(timers.get(request.id)); timers.delete(request.id); connection(protocol?.connected === true);
+  log(`Verified: ${request.type} (${request.id})`);
+  if (request.type === 'close') window.magelight?.send('lpClose', JSON.stringify({ protocol: 1, id: request.id, type: 'close' }));
 };
-
-status.textContent = window.magelight ? 'Papyrus bridge pending' : 'Browser preview';
-log(window.magelight ? 'Magelight host detected' : 'Browser preview: no game bridge');
-
-for (const field of [origin, biography]) {
-  field.addEventListener('input', () => emit('draft.changed'));
-}
-
+connection(false);
+for (const field of [origin, biography]) field.addEventListener('input', () => {
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => {
+    const draft = JSON.stringify([origin.value, biography.value]);
+    if (draft !== lastDraft) { lastDraft = draft; send('draft.changed'); }
+  }, 300);
+});
 document.querySelector<HTMLButtonElement>('#validate')!.addEventListener('click', () => {
-  feedback.textContent = origin.value.trim() && biography.value.trim()
-    ? 'The draft has content. Awaiting game-side validation in a later stage.'
-    : 'Enter an origin and a short biography for this UI check.';
-  emit('validate');
+  feedback.textContent = origin.value.trim() && biography.value.trim() ? 'Draft contains both fields; game validation is not implemented.' : 'Enter an origin and a short biography.';
+  send('validate');
 });
-document.querySelector<HTMLButtonElement>('#apply')!.addEventListener('click', () => {
-  feedback.textContent = 'Dry run only. No profile or game state was changed.';
-  emit('apply');
-});
-document.querySelector<HTMLButtonElement>('#close')!.addEventListener('click', () => emit('close'));
-
-let wasVisible = document.visibilityState === 'visible';
-if (wasVisible && window.magelight) emit('open');
+document.querySelector<HTMLButtonElement>('#apply')!.addEventListener('click', () => { feedback.textContent = 'Dry run only. No profile or game state was changed.'; send('apply'); });
+closeButton.addEventListener('click', () => send('close'));
+function reset(): void {
+  clearTimeout(draftTimer); draftTimer = undefined;
+  for (const timer of timers.values()) clearTimeout(timer);
+  timers.clear(); protocol = undefined; lastDraft = ''; connection(false);
+}
+function opened(): void {
+  reset();
+  protocol = new Protocol(`${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`);
+  send('open');
+}
+if (document.visibilityState === 'visible' && window.magelight) opened();
 document.addEventListener('visibilitychange', () => {
-  const visible = document.visibilityState === 'visible';
-  if (visible && !wasVisible) emit('open');
-  wasVisible = visible;
+  if (document.visibilityState === 'visible') opened();
+  else reset();
 });

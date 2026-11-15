@@ -10,7 +10,7 @@ function Make-Fixture([bool]$includePex, [bool]$includeJs, [string]$omitContent 
         $entries = @{
             'LivingPastStage0.esp' = 'fixture only'
             'SKSE/Plugins/SkyrimNet/external/jeepayjipex.living-past/manifest.json' = '{}'
-            'SKSE/Plugins/SkyrimNet/external/jeepayjipex.living-past/prompts/submodules/character_bio/0651_living_past_relationship.prompt' = 'fixture'
+            'SKSE/Plugins/SkyrimNet/external/jeepayjipex.living-past/prompts/submodules/system_head/0651_living_past_probe.prompt' = 'fixture'
             'Magelight/LivingPast/manifest.json' = '{}'
             'Magelight/LivingPast/views/spike/index.html' = '<script src="./assets/app.js"></script><link href="./assets/app.css">'
             'Magelight/LivingPast/views/spike/assets/app.css' = 'fixture'
@@ -40,7 +40,7 @@ try {
     if (-not $rejected) { throw 'A package without a referenced asset was accepted.' }
     foreach ($missing in @(
         'SKSE/Plugins/SkyrimNet/external/jeepayjipex.living-past/manifest.json',
-        'SKSE/Plugins/SkyrimNet/external/jeepayjipex.living-past/prompts/submodules/character_bio/0651_living_past_relationship.prompt'
+        'SKSE/Plugins/SkyrimNet/external/jeepayjipex.living-past/prompts/submodules/system_head/0651_living_past_probe.prompt'
     )) {
         Remove-Item -LiteralPath $archive
         Make-Fixture $true $true $missing
@@ -48,6 +48,17 @@ try {
         try { & $validator -Archive $archive } catch { $rejected = $true }
         if (-not $rejected) { throw "A package without $missing was accepted." }
     }
+    Remove-Item -LiteralPath $archive
+    Make-Fixture $true $true
+    $zip = [IO.Compression.ZipFile]::Open($archive, [IO.Compression.ZipArchiveMode]::Update)
+    try {
+        $entry = $zip.CreateEntry('SKSE/Plugins/SkyrimNet/external/jeepayjipex.living-past/prompts/submodules/character_bio/0651_living_past_relationship.prompt')
+        $writer = [IO.StreamWriter]::new($entry.Open())
+        try { $writer.Write('obsolete') } finally { $writer.Dispose() }
+    } finally { $zip.Dispose() }
+    $rejected = $false
+    try { & $validator -Archive $archive } catch { $rejected = $true }
+    if (-not $rejected) { throw 'A package containing the obsolete Stage 0-B prompt was accepted.' }
     Write-Output 'Package validator accepted the complete fixture and rejected missing PEX, asset and SkyrimNet content fixtures.'
 } finally {
     if (Test-Path -LiteralPath $archive) { Remove-Item -LiteralPath $archive }

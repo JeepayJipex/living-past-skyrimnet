@@ -9,6 +9,8 @@ function Make-Fixture([bool]$includePex, [bool]$includeJs) {
     try {
         $entries = @{
             'LivingPastStage0.esp' = 'fixture only'
+            'SKSE/Plugins/SkyrimNet/external/jeepayjipex.living-past/manifest.json' = '{}'
+            'SKSE/Plugins/SkyrimNet/external/jeepayjipex.living-past/prompts/submodules/character_bio/0651_living_past_relationship.prompt' = 'fixture'
             'Magelight/LivingPast/manifest.json' = '{}'
             'Magelight/LivingPast/views/spike/index.html' = '<script src="./assets/app.js"></script><link href="./assets/app.css">'
             'Magelight/LivingPast/views/spike/assets/app.css' = 'fixture'

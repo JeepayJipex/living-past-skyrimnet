@@ -1,31 +1,35 @@
-export type EventName = 'open' | 'draft.changed' | 'validate' | 'apply' | 'close';
-export type Request = { protocol: 1; id: string; type: EventName; payload: { origin: string; biography: string } };
-
-// One instance belongs to one visible session. The UI owns timeout scheduling.
+export type Operation = 'O' | 'A' | 'C';
+const encoder = new TextEncoder();
+export const bytes = (value: string): number => encoder.encode(value).length;
+export function validText(value: string): boolean {
+  return value.trim().length > 0 && bytes(value) <= 160 && !/[\x00-\x1f\x7f]/.test(value);
+}
 export class Protocol {
-  private pending = new Map<string, string>();
   private sequence = 0;
+  private pending = new Map<string, { operation: Operation; text: string }>();
   private session: string;
-  connected = false;
-  constructor(session: string) { this.session = session; }
-
-  request(type: EventName, payload: Request['payload']): Request {
-    const request: Request = { protocol: 1, id: `${this.session}-${++this.sequence}`, type, payload };
-    this.pending.set(request.id, JSON.stringify(request));
-    return request;
+  constructor(session: string) {
+    this.session = session;
+    if (!/^[0-9a-f]{16}$/.test(session)) throw new Error('Invalid session');
   }
-
+  request(operation: Operation, text = ''): { id: string; frame: string } {
+    if (operation === 'A' && !validText(text)) throw new Error('Invalid relationship');
+    if (operation !== 'A' && text !== '') throw new Error('Unexpected text');
+    if (this.sequence >= 9999) throw new Error('Session exhausted');
+    const id = this.session + String(++this.sequence).padStart(4, '0');
+    this.pending.set(id, { operation, text });
+    return { id, frame: `2|${id}|${operation}|Q|${String(bytes(text)).padStart(3, '0')}|${text}` };
+  }
   timeout(id: string): boolean { return this.pending.delete(id); }
-
-  receive(raw: string): { kind: 'verified'; request: Request } | { kind: 'invalid' | 'unknown' | 'mismatch' } {
-    let response: { protocol?: unknown; correlationId?: unknown; type?: unknown; status?: unknown; request?: Request };
-    try { response = JSON.parse(raw); } catch { return { kind: 'invalid' }; }
-    if (!response || typeof response !== 'object' || response.protocol !== 1 || response.type !== 'echo' || response.status !== 'ok' || typeof response.correlationId !== 'string') return { kind: 'invalid' };
-    const expected = this.pending.get(response.correlationId);
-    if (!expected) return { kind: 'unknown' };
-    if (!response.request || response.request.id !== response.correlationId || JSON.stringify(response.request) !== expected) return { kind: 'mismatch' };
-    this.pending.delete(response.correlationId);
-    this.connected = true;
-    return { kind: 'verified', request: response.request };
+  receive(frame: string): { kind: 'verified'; id: string; operation: Operation; status: string; text: string } | { kind: 'invalid' | 'unknown' | 'mismatch' } {
+    const match = /^2\|([0-9a-f]{16}[0-9]{4})\|([OAC])\|([SE])\|([0-9]{3})\|/.exec(frame);
+    if (!match) return { kind: 'invalid' };
+    const text = frame.slice(match[0].length);
+    if (bytes(text) !== Number(match[4]) || bytes(text) > 160 || /[\x00-\x1f\x7f]/.test(text)) return { kind: 'invalid' };
+    const pending = this.pending.get(match[1]);
+    if (!pending) return { kind: 'unknown' };
+    if (pending.operation !== match[2] || (match[3] === 'S' && pending.operation === 'A' && pending.text !== text)) return { kind: 'mismatch' };
+    this.pending.delete(match[1]);
+    return { kind: 'verified', id: match[1], operation: pending.operation, status: match[3], text };
   }
 }

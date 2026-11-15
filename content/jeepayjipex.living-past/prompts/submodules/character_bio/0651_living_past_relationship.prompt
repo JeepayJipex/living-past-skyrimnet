@@ -1,0 +1,12 @@
+{% if render_mode == "full" %}
+{% if exists("npc") and existsIn(npc, "UUID") %}
+{% set ysolda = formid_to_uuid(108186) %}
+{% if ysolda != 0 and npc.UUID == ysolda and actorUUID == ysolda %}
+{% set relationship = papyrus_util("GetStringValue", actorUUID, "LivingPast.Stage0B.Relationship", "") %}
+{% if length(relationship) > 0 %}
+## Shared past with the player
+{{ relationship }}
+{% endif %}
+{% endif %}
+{% endif %}
+{% endif %}

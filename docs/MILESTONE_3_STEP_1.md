@@ -33,7 +33,7 @@ Copy multiline text containing accented characters from the Living Past view to 
 
 1. Confirm SkyrimNet 1.1.1, Magelight 1.8.0, SKSE and PapyrusUtil versions, enable the installed Living Past external bundle in SkyrimNet Plugins, and check SkyrimNet.log for load errors.
 2. Open Living Past with its configured hotkey. Paste a 2,048-byte narrative containing several lines, accented characters, emoji, quotes, a backslash and vertical bars. Use unique start and end markers. The byte counter shows the UTF-8 length. Activate and reopen to verify the exact readback. Try 2,049 bytes and verify rejection.
-3. Activate a different narrative, then interrupt transfer and close or reload before completion. Reopen and verify the last successful activation. If activation times out, reopen to reconcile the active value. Save and reload, exit and restart Skyrim, load the pre-activation save and its matching co-save, then switch to a different playthrough. Inspect the active value and the first rendered request after every load.
+3. Activate a different narrative, then interrupt transfer and close or reload before completion. Reopen and verify the last successful activation. Close immediately after sending activation and reopen to inspect the authoritative active value. Activation may have completed before dismissal. If activation times out, reopen to reconcile the active value. Save and reload, exit and restart Skyrim, load the pre-activation save and its matching co-save, then switch to a different playthrough. Inspect the active value and the first rendered request after every load.
 
 ## Inspect the actual dialogue request
 

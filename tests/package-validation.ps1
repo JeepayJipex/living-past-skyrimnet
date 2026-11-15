@@ -48,6 +48,17 @@ try {
         try { & $validator -Archive $archive } catch { $rejected = $true }
         if (-not $rejected) { throw "A package without $missing was accepted." }
     }
+    Remove-Item -LiteralPath $archive
+    Make-Fixture $true $true
+    $zip = [IO.Compression.ZipFile]::Open($archive, [IO.Compression.ZipArchiveMode]::Update)
+    try {
+        $entry = $zip.CreateEntry('SKSE/Plugins/SkyrimNet/external/jeepayjipex.living-past/prompts/submodules/character_bio/0651_living_past_relationship.prompt')
+        $writer = [IO.StreamWriter]::new($entry.Open())
+        try { $writer.Write('obsolete') } finally { $writer.Dispose() }
+    } finally { $zip.Dispose() }
+    $rejected = $false
+    try { & $validator -Archive $archive } catch { $rejected = $true }
+    if (-not $rejected) { throw 'A package containing the obsolete Stage 0-B prompt was accepted.' }
     Write-Output 'Package validator accepted the complete fixture and rejected missing PEX, asset and SkyrimNet content fixtures.'
 } finally {
     if (Test-Path -LiteralPath $archive) { Remove-Item -LiteralPath $archive }

@@ -31,13 +31,15 @@ Copy multiline text containing accented characters from the Living Past view to 
 
 ## Transport and activation
 
+The view now opens with the relationship index. Choose **Load saved narrative** to populate the editor on demand. **Refresh diagnostic** reads StorageUtil only when requested. In the persistence procedures below, use both buttons after reopening to record the slot diagnostic and active narrative readback.
+
 1. Confirm SkyrimNet 1.1.1, Magelight 1.8.0, SKSE and PapyrusUtil versions, enable the installed Living Past external bundle in SkyrimNet Plugins, and check SkyrimNet.log for load errors.
 2. Open Living Past with its configured hotkey. Paste a 2,048-byte narrative containing several lines, accented characters, emoji, quotes, a backslash and vertical bars. Use unique start and end markers. The byte counter shows the UTF-8 length. Activate and reopen to verify the exact readback. Try 2,049 bytes and verify rejection.
 3. Activate a different narrative, then interrupt transfer and close or reload before completion. Reopen and verify the last successful activation. Close immediately after sending activation and reopen to inspect the authoritative active value. Activation may have completed before dismissal. If activation times out, reopen to reconcile the active value. Save and reload, exit and restart Skyrim, load the pre-activation save and its matching co-save, then switch to a different playthrough. Inspect the active value and the first rendered request after every load.
 
 ## Persistence diagnostic
 
-Use a fresh disposable save and the updated probe package. The diagnostic runs automatically when the view opens. **Refresh diagnostic** repeats the same read-only check. Record the full diagnostic line and the separate active-probe readback message at each stage. Avoid recording the narrative itself in shared logs.
+Use a fresh disposable save and the updated probe package. Click **Refresh diagnostic** to run the read-only check. Record the full diagnostic line and the separate active-probe readback message at each stage. Avoid recording the narrative itself in shared logs.
 
 1. Open the probe before activation and record the diagnostic and active readback.
 2. Activate a 2,048-byte narrative, refresh the diagnostic, and record both results.
@@ -59,6 +61,32 @@ A local co-save from the reproduction contained both marker lines under the raw 
 4. Repeat with the LF-only two-line fixture and a narrative padded to exactly 2,048 UTF-8 bytes. Load the pre-activation save pair to check rollback. The reproduction requires no conversation-history reset. Legacy slots are read as stored and upgraded only by explicit activation. A legacy value already truncated at load needs the original narrative to recover the lost lines.
 
 The automated round-trip test applies the shipped codec rules to a simulated text-stream restore. The full restart and exact SkyrimNet request rendering require the in-game observations above.
+
+## Loading benchmark
+
+The game report for the previous build was up to 5 seconds from opening the view to narrative display. That path ran the diagnostic before opening the session, then decoded the same slot for every chunk. The updated **Sequential baseline** reproduces the per-chunk requests and repeated decoding while keeping diagnostics out of the comparison. Index timing starts when the visible view opens. Narrative timing starts on **Load saved narrative** and records transfer time and time through writing the field. Storage time uses Papyrus wall-clock intervals around slot lookup and decoding. Each slot read can include multiple StorageUtil calls. A round trip is a page request with its complete response, and a batch can return several individual replies.
+
+| Selection mode | Exact 2 KiB fixture in a local simulated bridge | Narrative round trips | Slot reads and decodes |
+| --- | ---: | ---: | ---: |
+| Sequential baseline | 281 ms | 18 | 18 |
+| Bounded batch | 16 ms | 1 | 1 |
+| Single large reply | 16 ms | 1 | 1 |
+
+These example timings came from a Windows Node run with an 8 ms timer per request. They measure the client and scheduling model. They supply no evidence about the host's payload limit, Papyrus scheduling, or in-game latency. Reproduce the comparison with the command below. The fixture splits across 17 chunks, and the baseline uses a final EOF request. Staged verification uses a transient per-read snapshot instead of decoding on each chunk.
+
+    node --test tests/probe-loading.test.mjs
+
+### In-game checklist
+
+1. Install the rebuilt ZIP through MO2 and verify the winning Magelight files and PEX. Record the Skyrim, SKSE, PapyrusUtil and Magelight versions. Use the same save and an exact 2,048-byte narrative with Unicode, line breaks, and distinct start and end markers for all three modes.
+2. Time a first open after game restart and ten subsequent opens. Record the index and session timings before clicking Load. An index open should report one request and leave the narrative empty. Compare with the 500 ms index target.
+3. Run ten selections per mode on the same narrative and alternate modes. Record editor time, transfer time, StorageUtil and decode time, requests, replies, and timeouts. Report the median and worst sample and check the 1-second selection target. Compare the exact JSON field to the fixture after each successful load.
+4. Run **Bidirectional payload benchmark** at 160, 512, 1,024, 2,048 and 4,096 bytes. That number excludes the frame header. Record exact echo, timeout, rejection, or mismatch. Close and reopen between failures. A failed frame test may be caused by either direction or by Papyrus string handling. The 4 KiB probe limit bounds the experiment and does not establish the host's limit.
+5. Close during a read, reopen, then repeat after correcting the narrative and after loading an older save. Verify that late replies cannot populate a new session and that the text comes from the selected save. Inspect Ysolda's payload after loading both saves. Run the checklist independently on 1.5.97 and the supported 1.6.x builds available for testing.
+
+Use a compact relationship index at open and load one narrative by relationship ID at selection. The bounded batch is the working candidate because it keeps the documented probe envelope and removes the per-chunk request dependency. Prefer a single large reply only if exact echo, full narrative readback, and failure behavior pass across the supported stacks. In the eventual wizard, cache only narratives explicitly loaded in the current save/view session. Clear the cache on close, visibility loss, game load or revert, and correction. Correlation IDs must bind responses to the current session and selected relationship. The probe rereads on each selection to keep timings comparable and retains the existing save-scoped storage format.
+
+Magelight 1.8.0 documents 1.5.97 and 1.6.x host support with the corresponding SKSE64 and Address Library editions. Use a PapyrusUtil build that matches each runtime. The tagged Papyrus bridge uses a string argument. Its API does not establish a safe end-to-end payload size or burst delivery timing. Consider a minimal native bridge only if the instrumented Papyrus alternatives miss the targets after separating storage/decode from transport time. A native bridge would introduce runtime-specific binary compatibility and packaging. [Magelight requirements](https://github.com/Severause/MagelightUI/blob/v1.8.0/README.md#requirements) · [Tagged Papyrus bridge implementation](https://github.com/Severause/MagelightUI/blob/v1.8.0/src/MagelightPapyrus.cpp)
 
 ## Inspect the actual dialogue request
 

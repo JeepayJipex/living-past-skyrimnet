@@ -1,7 +1,7 @@
 import './style.css';
 import { splitNarrative } from './narrative';
 import { bytes } from './protocol';
-import { ProbeClient } from './probe-client';
+import { ProbeClient, type LoadMode } from './probe-client';
 
 declare global { interface Window { magelight?: { send(channel: string, payload: string): void }; lpReceive?: (payload: string) => void } }
 const description = document.querySelector<HTMLTextAreaElement>('#description')!;
@@ -14,10 +14,19 @@ const close = document.querySelector<HTMLButtonElement>('#close')!;
 const count = document.querySelector<HTMLElement>('#count')!;
 const diagnostic = document.querySelector<HTMLElement>('#diagnostic')!;
 const refreshDiagnostic = document.querySelector<HTMLButtonElement>('#refresh-diagnostic')!;
+const index = document.querySelector<HTMLElement>('#relationship-index')!;
+const loadMode = document.querySelector<HTMLSelectElement>('#load-mode')!;
+const loadNarrative = document.querySelector<HTMLButtonElement>('#load-narrative')!;
+const loadMetrics = document.querySelector<HTMLElement>('#load-metrics')!;
+const payloadSize = document.querySelector<HTMLSelectElement>('#payload-size')!;
+const testPayload = document.querySelector<HTMLButtonElement>('#test-payload')!;
+const payloadResult = document.querySelector<HTMLElement>('#payload-result')!;
 let client: ProbeClient | undefined;
 let diagnosticClient: ProbeClient | undefined;
 let ready = false;
 let busy = false;
+let activeSlot = 0;
+let loaded = false;
 let draft = '';
 function showDraft(text: string): void {
   draft = text;
@@ -28,9 +37,11 @@ function showDraft(text: string): void {
 }
 function update(): void {
   count.textContent = `${bytes(draft)} / 2048 bytes`;
-  apply.disabled = !ready || busy;
+  apply.disabled = !ready || busy || (activeSlot !== 0 && !loaded);
   close.disabled = false;
   refreshDiagnostic.disabled = busy || !window.magelight;
+  loadNarrative.disabled = !ready || busy || activeSlot === 0;
+  testPayload.disabled = !ready || busy;
 }
 window.lpReceive = frame => { client?.receive(frame); diagnosticClient?.receive(frame); };
 function newSession(): string {
@@ -52,33 +63,93 @@ async function diagnose(): Promise<void> {
   }
 }
 async function open(): Promise<void> {
+  const started = performance.now();
   client?.close();
-  client = undefined; ready = false; busy = false; showDraft(''); update();
+  client = undefined; ready = false; busy = false; activeSlot = 0; loaded = false; showDraft('');
+  index.textContent = 'Loading relationship index.';
+  loadMetrics.textContent = '';
+  payloadResult.textContent = '';
+  update();
   if (!window.magelight) { status.textContent = 'Browser preview'; return; }
   const current = new ProbeClient(newSession(), frame => window.magelight!.send('lpEvent', frame));
   client = current;
-  await diagnose();
-  if (client !== current) return;
   try {
-    const active = await current.open();
+    const requestStarted = performance.now();
+    const slot = await current.openIndex();
     if (client !== current) return;
-    showDraft(active); ready = true; status.textContent = 'Connected';
-    feedback.textContent = `Active probe readback: ${bytes(active)} bytes. Save your game after activation.`;
+    activeSlot = slot;
+    ready = true;
+    status.textContent = 'Connected';
+    index.textContent = (slot ? 'Ysolda has a saved narrative.' : 'Ysolda has no saved narrative.')
+      + ' Index ready in ' + Math.round(performance.now() - started) + ' ms'
+      + ' (session request ' + Math.round(performance.now() - requestStarted) + ' ms, 1 round trip).';
+    feedback.textContent = slot ? 'Load the saved narrative to inspect it.' : 'Enter a narrative to activate the probe.';
   } catch (error) {
     if (client !== current) return;
     status.textContent = 'Unavailable'; feedback.textContent = String(error);
   }
   update();
 }
+loadNarrative.addEventListener('click', async () => {
+  const current = client;
+  if (!current || !ready || busy) return;
+  const mode = loadMode.value as LoadMode;
+  const started = performance.now();
+  busy = true;
+  update();
+  try {
+    const result = await current.load(mode);
+    if (client !== current) return;
+    showDraft(result.text);
+    loaded = true;
+    const editorMs = Math.round(performance.now() - started);
+    loadMetrics.textContent = [mode, bytes(result.text) + ' bytes', result.roundTrips + ' round trips',
+      result.replies + ' replies', result.reads + ' slot reads/decodes', result.storageMs + ' ms in storage/decode',
+      Math.round(result.transferMs) + ' ms transfer', editorMs + ' ms to populate the editor'].join(' · ');
+    feedback.textContent = 'Saved narrative read back.';
+  } catch (error) {
+    if (client !== current) return;
+    current.close();
+    ready = false;
+    loadMetrics.textContent = mode + ' failed after ' + Math.round(performance.now() - started) + ' ms. ' + String(error) + '. Reopen to retry.';
+  }
+  busy = false;
+  update();
+});
+testPayload.addEventListener('click', async () => {
+  const current = client;
+  if (!current || !ready || busy) return;
+  const size = Number(payloadSize.value);
+  const prefix = 'Magelight é 😀\r\n\\|';
+  const text = prefix + 'x'.repeat(size - bytes(prefix) - 3) + 'END';
+  const started = performance.now();
+  busy = true;
+  update();
+  try {
+    await current.measurePayload(text);
+    if (client !== current) return;
+    payloadResult.textContent = size + ' bytes matched in both directions in ' + Math.round(performance.now() - started) + ' ms.';
+  } catch (error) {
+    if (client !== current) return;
+    current.close();
+    ready = false;
+    payloadResult.textContent = size + ' bytes failed after ' + Math.round(performance.now() - started) + ' ms. ' + String(error) + '. Reopen to retry.';
+  }
+  busy = false;
+  update();
+});
 apply.addEventListener('click', async () => {
   const current = client;
   const text = draft;
-  if (!current || !ready || busy) return;
+  if (!current || !ready || busy || (activeSlot !== 0 && !loaded)) return;
   try { splitNarrative(text); } catch (error) { feedback.textContent = String(error); return; }
   busy = true; update();
   try {
     await current.activate(text);
     if (client !== current) return;
+    activeSlot = activeSlot === 1 ? 2 : 1;
+    loaded = true;
+    index.textContent = 'Ysolda has a saved narrative.';
     feedback.textContent = 'Probe activated and read back. Save your game.';
   } catch (error) {
     if (client !== current) return;

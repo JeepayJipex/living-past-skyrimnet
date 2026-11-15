@@ -21,7 +21,7 @@ class PapyrusProbe {
     const op = frame[23];
     const value = frame.slice(31);
     let result = '';
-    if (op === 'O') this.draft = '';
+    if (op === 'O') { this.draft = ''; result = '1'; }
     if (op === 'B') this.draft = '';
     if (op === 'D') { this.draft += value.slice(4); result = value; }
     if (op === 'S') this.staged = this.draft;

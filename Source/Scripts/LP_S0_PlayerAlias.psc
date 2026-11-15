@@ -11,6 +11,8 @@ int probePrevious = 0
 bool probePrepared = False
 int probeSequence = 0
 int probeReadOffset = 0
+string probeReadSnapshot = ""
+int probeSnapshotSlot = 0
 
 Event OnInit()
     Setup()
@@ -25,6 +27,8 @@ Function Setup()
     probePrepared = False
     probeSequence = 0
     probeText = ""
+    probeReadSnapshot = ""
+    probeSnapshotSlot = 0
     RegisterForModEvent("Magelight_ViewDomReady", "OnLivingPastDomReady")
     RegisterForModEvent("Magelight_JS_lpEvent", "OnLivingPastEvent")
     RegisterForModEvent("Magelight_JS_lpClose", "OnLivingPastClose")
@@ -219,7 +223,14 @@ Function ProbeEvent(string frame)
     string id = StringUtil.Substring(frame, 2, 20)
     string session = StringUtil.Substring(id, 0, 16)
     string op = StringUtil.Substring(frame, 23, 1)
-    string n = StringUtil.Substring(frame, 27, 3)
+    int digits = 3
+    int maxPayload = 160
+    If op == "L" || op == "P"
+        digits = 4
+        maxPayload = 4096
+    EndIf
+    int payloadStart = 28 + digits
+    string n = StringUtil.Substring(frame, 27, digits)
     int i = 0
     While i < 20
         string c = StringUtil.Substring(id, i, 1)
@@ -229,14 +240,14 @@ Function ProbeEvent(string frame)
         i += 1
     EndWhile
     i = 0
-    While i < 3
+    While i < digits
         If StringUtil.Find("0123456789", StringUtil.Substring(n, i, 1)) < 0
             Return
         EndIf
         i += 1
     EndWhile
     int size = n as int
-    If StringUtil.Substring(frame, 22, 1) != "|" || StringUtil.Substring(frame, 24, 3) != "|Q|" || StringUtil.Substring(frame, 30, 1) != "|" || size > 160 || StringUtil.GetLength(frame) != 31 + size
+    If StringUtil.Substring(frame, 22, 1) != "|" || StringUtil.Substring(frame, 24, 3) != "|Q|" || StringUtil.Substring(frame, payloadStart - 1, 1) != "|" || size > maxPayload || StringUtil.GetLength(frame) != payloadStart + size
         Return
     EndIf
     Actor npc = Game.GetFormFromFile(0x0001A69A, "Skyrim.esm") as Actor
@@ -280,7 +291,7 @@ Function ProbeEvent(string frame)
         ProbeReply(id, op, False, "")
         Return
     EndIf
-    string arg = StringUtil.Substring(frame, 31)
+    string arg = StringUtil.Substring(frame, payloadStart)
     string markerKey = "LivingPast.Probe.Active"
     int active = StorageUtil.GetIntValue(npc, markerKey, 0)
     bool ok = False
@@ -292,6 +303,8 @@ Function ProbeEvent(string frame)
         probePrepared = False
         probeText = ""
         probeLength = 0
+        probeReadSnapshot = ""
+        probeSnapshotSlot = 0
         result = active as string
         ok = True
     ElseIf session == probeSession && requestSequence == probeSequence + 1 && Magelight.IsVisible(viewId)
@@ -299,7 +312,7 @@ Function ProbeEvent(string frame)
         int numericCount = 0
         If op == "B" || op == "D"
             numericCount = 4
-        ElseIf op == "R"
+        ElseIf op == "R" || op == "J"
             numericCount = 5
         EndIf
         i = 0
@@ -310,7 +323,13 @@ Function ProbeEvent(string frame)
             EndIf
             i += 1
         EndWhile
-        If op == "B" && size == 4
+        If (op == "T" || op == "L") && size == 0 && active >= 0 && active <= 2
+            SendProbeNarrative(id, op, npc, active)
+            Return
+        ElseIf op == "P"
+            result = arg
+            ok = True
+        ElseIf op == "B" && size == 4
             probeLength = arg as int
             probeText = ""
             probePrepared = False
@@ -333,7 +352,7 @@ Function ProbeEvent(string frame)
             probePrepared = True
             probeReadOffset = 0
             ok = True
-        ElseIf op == "R" && size == 5
+        ElseIf (op == "R" || op == "J") && size == 5
             int slot = StringUtil.Substring(arg, 0, 1) as int
             int offset = StringUtil.Substring(arg, 1, 4) as int
             bool readingProbe = slot == 3
@@ -343,24 +362,37 @@ Function ProbeEvent(string frame)
                 Else
                     slot = probeSlot
                 EndIf
-                string saved = ReadProbeSlot(npc, slot)
-                If offset <= StringUtil.GetLength(saved)
-                    int take = 128
-                    If offset + take > StringUtil.GetLength(saved)
-                        take = StringUtil.GetLength(saved) - offset
-                    Else
-                        While take > 0 && ByteAt(saved, offset + take) >= 128 && ByteAt(saved, offset + take) <= 191
-                            take -= 1
-                        EndWhile
+                float started = Utility.GetCurrentRealTime()
+                string saved = probeReadSnapshot
+                If op == "J" || offset == 0 || probeSnapshotSlot != slot
+                    saved = ReadProbeSlot(npc, slot)
+                    If op == "R"
+                        probeReadSnapshot = saved
+                        probeSnapshotSlot = slot
                     EndIf
-                    result = StringUtil.Substring(saved, offset, take)
+                EndIf
+                int readMs = ((Utility.GetCurrentRealTime() - started) * 1000.0) as int
+                If offset <= StringUtil.GetLength(saved)
+                    int take = ProbeChunkLength(saved, offset)
+                    If take > 0
+                        result = StringUtil.Substring(saved, offset, take)
+                    ElseIf op == "R"
+                        probeReadSnapshot = ""
+                        probeSnapshotSlot = 0
+                    EndIf
                     If readingProbe
                         probeReadOffset += take
                     EndIf
                     ok = True
+                    If op == "J"
+                        result = readMs + "|1|" + result
+                    EndIf
                 EndIf
             ElseIf slot == 0 && active == 0 && offset == 0
                 ok = True
+                If op == "J"
+                    result = "0|0|"
+                EndIf
             EndIf
         ElseIf op == "K" && size == 0 && probePrepared && probeReadOffset == probeLength && active == probePrevious
             StorageUtil.SetIntValue(npc, markerKey, probeSlot)
@@ -372,16 +404,71 @@ Function ProbeEvent(string frame)
     ProbeReply(id, op, ok, result)
 EndFunction
 
+int Function ProbeChunkLength(string value, int offset)
+    int remaining = StringUtil.GetLength(value) - offset
+    If remaining <= 128
+        Return remaining
+    EndIf
+    int take = 128
+    int nextByte = ByteAt(value, offset + take)
+    While take > 0 && nextByte >= 128 && nextByte <= 191
+        take -= 1
+        nextByte = ByteAt(value, offset + take)
+    EndWhile
+    Return take
+EndFunction
+
+Function SendProbeNarrative(string id, string op, Actor npc, int active)
+    string saved = ""
+    int readCount = 0
+    float started = Utility.GetCurrentRealTime()
+    If active > 0
+        saved = ReadProbeSlot(npc, active)
+        readCount = 1
+    EndIf
+    int readMs = ((Utility.GetCurrentRealTime() - started) * 1000.0) as int
+    int size = StringUtil.GetLength(saved)
+    If size > 2048
+        ProbeReply(id, op, False, "")
+        Return
+    EndIf
+    If op == "L"
+        ProbeReply(id, op, True, readMs + "|" + readCount + "|" + saved)
+        Return
+    EndIf
+    int offset = 0
+    While offset < size
+        If !Magelight.IsVisible(viewId) || probeSession != StringUtil.Substring(id, 0, 16)
+            Return
+        EndIf
+        int take = ProbeChunkLength(saved, offset)
+        If take == 0
+            ProbeReply(id, op, False, "")
+            Return
+        EndIf
+        SendProbeFrame(id, op, "C", offset + "|" + StringUtil.Substring(saved, offset, take))
+        offset += take
+    EndWhile
+    ProbeReply(id, op, True, readMs + "|" + readCount + "|" + size)
+EndFunction
+
 Function ProbeReply(string id, string op, bool ok, string value)
     string status = "E"
     If ok
         status = "S"
     EndIf
+    SendProbeFrame(id, op, status, value)
+EndFunction
+
+Function SendProbeFrame(string id, string op, string status, string value)
     int count = StringUtil.GetLength(value)
     string n = count as string
     If count < 10
         n = "00" + n
     ElseIf count < 100
+        n = "0" + n
+    EndIf
+    If (op == "L" || op == "P") && count < 1000
         n = "0" + n
     EndIf
     Magelight.Call(viewId, "lpReceive", "3|" + id + "|" + op + "|" + status + "|" + n + "|" + value)
@@ -395,6 +482,8 @@ Event OnLivingPastClose(string eventName, string strArg, float numArg, Form send
     probePrepared = False
     probeText = ""
     probeLength = 0
+    probeReadSnapshot = ""
+    probeSnapshotSlot = 0
     If Magelight.GetUIModeView() == viewId
         Magelight.ReleaseUIMode("LivingPast")
     EndIf

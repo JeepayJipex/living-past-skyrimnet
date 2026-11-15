@@ -4,6 +4,22 @@
 <body><main class="shell">
 <header class="topbar"><div><p class="eyebrow">Living Past</p><h1>A life before the adventure</h1></div><span id="status" class="status">Connecting</span></header>
 <section class="card"><h2>Ysolda · Technical validation</h2>
+<p id="relationship-index" class="hint" role="status">Loading relationship index.</p>
+<label for="load-mode">Narrative transport</label>
+<select id="load-mode">
+  <option value="batch">Bounded batch</option>
+  <option value="baseline">Sequential baseline</option>
+  <option value="large">Single large reply</option>
+</select>
+<button id="load-narrative" class="secondary" type="button" disabled>Load saved narrative</button>
+<p id="load-metrics" class="hint" role="status"></p>
+<details>
+  <summary>Bidirectional payload benchmark</summary>
+  <label for="payload-size">Payload bytes</label>
+  <select id="payload-size"><option>160</option><option>512</option><option>1024</option><option>2048</option><option>4096</option></select>
+  <button id="test-payload" class="secondary" type="button" disabled>Test payload</button>
+  <p id="payload-result" class="hint" role="status"></p>
+</details>
 <label for="description">Your shared past</label>
 <textarea id="description" rows="5" placeholder="Ysolda and the player grew up together in Whiterun. They have been friends since childhood."></textarea>
 <button id="replace-draft" class="secondary" type="button" hidden>Clear draft for replacement</button>

@@ -64,30 +64,26 @@ The automated round-trip test applies the shipped codec rules to a simulated tex
 
 ## Loading benchmark
 
-The game report for the previous build was up to 5 seconds from opening the view to narrative display. That path ran the diagnostic before opening the session, then decoded the same slot for every chunk. The updated **Sequential baseline** reproduces the per-chunk requests and repeated decoding while keeping diagnostics out of the comparison. Index timing starts when the visible view opens. Narrative timing starts on **Load saved narrative** and records transfer time and time through writing the field. Storage time uses Papyrus wall-clock intervals around slot lookup and decoding. Each slot read can include multiple StorageUtil calls. A round trip is a page request with its complete response, and a batch can return several individual replies.
+The user measured the following timings in their modded Skyrim setup using a persisted 2,048-byte narrative and the benchmark build at commit 483d4fc. The timings depend on that setup, save, host and Papyrus workload.
 
-| Selection mode | Exact 2 KiB fixture in a local simulated bridge | Narrative round trips | Slot reads and decodes |
-| --- | ---: | ---: | ---: |
-| Sequential baseline | 281 ms | 18 | 18 |
-| Bounded batch | 16 ms | 1 | 1 |
-| Single large reply | 16 ms | 1 | 1 |
+| Selection mode | In-game load time | Requests | Replies | Slot reads |
+| --- | ---: | ---: | ---: | ---: |
+| Sequential baseline | 5,666 ms | 17 | 17 | 17 |
+| Bounded batch | 1,435 ms | 1 | 17 | 1 |
+| Single large reply | 333 ms | 1 | 1 | 1 |
 
-These example timings came from a Windows Node run with an 8 ms timer per request. They measure the client and scheduling model. They supply no evidence about the host's payload limit, Papyrus scheduling, or in-game latency. Reproduce the comparison with the command below. The fixture splits across 17 chunks, and the baseline uses a final EOF request. Staged verification uses a transient per-read snapshot instead of decoding on each chunk.
+The single large reply spent 132 ms in slot lookup and decoding. Five consecutive large-reply loads produced similar results. The relationship index was ready in 297 ms. The tested setup met the 500 ms index target and 1 second selection target using the large reply. Exact bidirectional echoes at 160, 512, 1,024, 2,048 and 4,096 bytes passed at around 167 ms each. These tested sizes establish the observed working envelope for that setup.
 
-    node --test tests/probe-loading.test.mjs
+The current probe opens with a compact relationship index. A single large reply is preferred for each selected narrative. If that request fails or returns an empty or incomplete value, the client opens a fresh session, checks that the active slot still matches the index, and retries once with the bounded batch. Both transports check the decoded byte count and require content for an active slot. The fallback can exceed the normal selection target. Reopening establishes a new session and fresh reads use the save-scoped active marker.
 
-### In-game checklist
+### In-game checklist for the final probe
 
-1. Install the rebuilt ZIP through MO2 and verify the winning Magelight files and PEX. Record the Skyrim, SKSE, PapyrusUtil and Magelight versions. Use the same save and an exact 2,048-byte narrative with Unicode, line breaks, and distinct start and end markers for all three modes.
-2. Time a first open after game restart and ten subsequent opens. Record the index and session timings before clicking Load. An index open should report one request and leave the narrative empty. Compare with the 500 ms index target.
-3. Run ten selections per mode on the same narrative and alternate modes. Record editor time, transfer time, StorageUtil and decode time, requests, replies, and timeouts. Report the median and worst sample and check the 1-second selection target. Compare the exact JSON field to the fixture after each successful load.
-4. Run **Bidirectional payload benchmark** at 160, 512, 1,024, 2,048 and 4,096 bytes. That number excludes the frame header. Record exact echo, timeout, rejection, or mismatch. Close and reopen between failures. A failed frame test may be caused by either direction or by Papyrus string handling. The 4 KiB probe limit bounds the experiment and does not establish the host's limit.
-5. Close during a read, reopen, then repeat after correcting the narrative and after loading an older save. Verify that late replies cannot populate a new session and that the text comes from the selected save. Inspect Ysolda's payload after loading both saves. Run the checklist independently on 1.5.97 and the supported 1.6.x builds available for testing.
+1. Install the rebuilt ZIP through MO2 and verify the winning Magelight files and PEX. Record the Skyrim, SKSE, PapyrusUtil and Magelight versions. Load the same save with its matching co-save.
+2. Open the view and check the index timing before selecting a narrative. Choose **Load saved narrative** and verify one large reply, exact text in the JSON field, and timings under **Developer diagnostics**. Repeat five times on the same persisted 2,048-byte narrative.
+3. Close during a read, reopen, and repeat after correcting the narrative and after loading an older save. Verify late replies cannot fill a new session and the active text follows the selected save. Inspect Ysolda's request and verify recipient isolation.
+4. On another supported runtime, repeat the normal load and record any fallback reason from **Developer diagnostics**. Use runtime-matched Magelight, SKSE, Address Library, and PapyrusUtil. Results on the measured setup do not establish performance on 1.5.97 or other 1.6.x installations. [Magelight requirements](https://github.com/Severause/MagelightUI/blob/v1.8.0/README.md#requirements)
 
-Use a compact relationship index at open and load one narrative by relationship ID at selection. The bounded batch is the working candidate because it keeps the documented probe envelope and removes the per-chunk request dependency. Prefer a single large reply only if exact echo, full narrative readback, and failure behavior pass across the supported stacks. In the eventual wizard, cache only narratives explicitly loaded in the current save/view session. Clear the cache on close, visibility loss, game load or revert, and correction. Correlation IDs must bind responses to the current session and selected relationship. The probe rereads on each selection to keep timings comparable and retains the existing save-scoped storage format.
-
-Magelight 1.8.0 documents 1.5.97 and 1.6.x host support with the corresponding SKSE64 and Address Library editions. Use a PapyrusUtil build that matches each runtime. The tagged Papyrus bridge uses a string argument. Its API does not establish a safe end-to-end payload size or burst delivery timing. Consider a minimal native bridge only if the instrumented Papyrus alternatives miss the targets after separating storage/decode from transport time. A native bridge would introduce runtime-specific binary compatibility and packaging. [Magelight requirements](https://github.com/Severause/MagelightUI/blob/v1.8.0/README.md#requirements) · [Tagged Papyrus bridge implementation](https://github.com/Severause/MagelightUI/blob/v1.8.0/src/MagelightPapyrus.cpp)
-
+The temporary benchmark controls were removed from the probe. The earlier benchmark build retains the mode selector and bidirectional echo controls for cross-runtime measurements. Run the simulated protocol suite with `node --test tests/probe-loading.test.mjs` to exercise both transports and fallback failures without Skyrim. The eventual wizard should fetch only the selected actor's narrative from its compact index and invalidate any loaded copies on correction, save load or view close.
 ## Inspect the actual dialogue request
 
 Open SkyrimNet dashboard **System → Logs → API Requests**, select the new dialogue request by timestamp and actor, and open its **Request payload**. Search the complete request for both unique markers and count occurrences. Speak to Ysolda without mentioning the marker and verify her direct response request contains it once. Speak to Carlotta while Ysolda is nearby, before either NPC voices the private fact, and verify the marker is absent. Check the player hidden from Ysolda, Ysolda as a secondary subject, thoughts, warmup and dynamic-bio generation. Inspect the effective player biography markers in the same request. A dialogue response or profile preview alone does not establish recipient isolation.

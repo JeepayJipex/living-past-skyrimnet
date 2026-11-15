@@ -61,7 +61,7 @@ export class ProbeClient {
       if (!end || Number(end[2]) !== bytes(pending.chunks)) {
         this.closed = true;
         pending.reject(new Error('Incomplete batch read'));
-      } else pending.resolve(end[1] + pending.chunks);
+      } else pending.resolve(end[1] + end[2] + '|' + pending.chunks);
     } else pending.resolve(value);
   }
   async read(slot: string): Promise<string> {
@@ -90,15 +90,33 @@ export class ProbeClient {
       const reply = mode === 'baseline'
         ? await this.request('J', '0' + String(bytes(text)).padStart(4, '0'))
         : await this.request(mode === 'batch' ? 'T' : 'L');
-      const parts = /^(\d+)\|([01])\|([\s\S]*)$/.exec(reply);
+      const parts = (mode === 'baseline' ? /^(\d+)\|([01])\|([\s\S]*)$/ : /^(\d+)\|([01])\|(\d{1,4})\|([\s\S]*)$/).exec(reply);
       if (!parts) throw new Error('Invalid load metrics');
+      const part = mode === 'baseline' ? parts[3] : parts[4];
+      if (mode !== 'baseline' && bytes(part) !== Number(parts[3])) {
+        throw new Error('Narrative byte count mismatch');
+      }
       storageMs += Number(parts[1]);
       reads += Number(parts[2]);
-      text += parts[3];
+      text += part;
       if (bytes(text) > 2048) throw new Error('Stored narrative exceeds limit');
-      if (mode !== 'baseline' || !parts[3]) break;
+      if (mode !== 'baseline' || !part) break;
     } while (true);
     return { text, storageMs, reads, roundTrips: this.sequence - startSequence, replies: this.replies - startReplies, transferMs: performance.now() - started };
+  }
+  async loadPreferred(activeSlot: number, reconnect: () => ProbeClient) {
+    try {
+      const result = await this.load('large');
+      if (!result.text) throw new Error('Active narrative is empty');
+      return { ...result, mode: 'large', fallbackReason: '' };
+    } catch (error) {
+      this.close();
+      const fallback = reconnect();
+      if (await fallback.openIndex() !== activeSlot) throw new Error('Active slot changed; reopen to refresh the index');
+      const result = await fallback.load('batch');
+      if (!result.text) throw new Error('Active narrative is empty');
+      return { ...result, mode: 'batch', fallbackReason: String(error) };
+    }
   }
   async measurePayload(value: string): Promise<void> {
     if (await this.request('P', value) !== value) throw new Error('Payload echo mismatch');

@@ -1,7 +1,7 @@
 import './style.css';
 import { splitNarrative } from './narrative';
 import { bytes } from './protocol';
-import { ProbeClient, type LoadMode } from './probe-client';
+import { ProbeClient } from './probe-client';
 
 declare global { interface Window { magelight?: { send(channel: string, payload: string): void }; lpReceive?: (payload: string) => void } }
 const description = document.querySelector<HTMLTextAreaElement>('#description')!;
@@ -15,12 +15,8 @@ const count = document.querySelector<HTMLElement>('#count')!;
 const diagnostic = document.querySelector<HTMLElement>('#diagnostic')!;
 const refreshDiagnostic = document.querySelector<HTMLButtonElement>('#refresh-diagnostic')!;
 const index = document.querySelector<HTMLElement>('#relationship-index')!;
-const loadMode = document.querySelector<HTMLSelectElement>('#load-mode')!;
 const loadNarrative = document.querySelector<HTMLButtonElement>('#load-narrative')!;
 const loadMetrics = document.querySelector<HTMLElement>('#load-metrics')!;
-const payloadSize = document.querySelector<HTMLSelectElement>('#payload-size')!;
-const testPayload = document.querySelector<HTMLButtonElement>('#test-payload')!;
-const payloadResult = document.querySelector<HTMLElement>('#payload-result')!;
 let client: ProbeClient | undefined;
 let diagnosticClient: ProbeClient | undefined;
 let ready = false;
@@ -41,7 +37,6 @@ function update(): void {
   close.disabled = false;
   refreshDiagnostic.disabled = busy || !window.magelight;
   loadNarrative.disabled = !ready || busy || activeSlot === 0;
-  testPayload.disabled = !ready || busy;
 }
 window.lpReceive = frame => { client?.receive(frame); diagnosticClient?.receive(frame); };
 function newSession(): string {
@@ -68,7 +63,6 @@ async function open(): Promise<void> {
   client = undefined; ready = false; busy = false; activeSlot = 0; loaded = false; showDraft('');
   index.textContent = 'Loading relationship index.';
   loadMetrics.textContent = '';
-  payloadResult.textContent = '';
   update();
   if (!window.magelight) { status.textContent = 'Browser preview'; return; }
   const current = new ProbeClient(newSession(), frame => window.magelight!.send('lpEvent', frame));
@@ -91,49 +85,34 @@ async function open(): Promise<void> {
   update();
 }
 loadNarrative.addEventListener('click', async () => {
-  const current = client;
+  let current = client;
   if (!current || !ready || busy) return;
-  const mode = loadMode.value as LoadMode;
+  const expectedSlot = activeSlot;
   const started = performance.now();
   busy = true;
   update();
   try {
-    const result = await current.load(mode);
+    const result = await current.loadPreferred(expectedSlot, () => {
+      if (client !== current) throw new Error('View session changed');
+      current = new ProbeClient(newSession(), frame => window.magelight!.send('lpEvent', frame));
+      client = current;
+      return current;
+    });
     if (client !== current) return;
     showDraft(result.text);
     loaded = true;
     const editorMs = Math.round(performance.now() - started);
-    loadMetrics.textContent = [mode, bytes(result.text) + ' bytes', result.roundTrips + ' round trips',
+    loadMetrics.textContent = [result.mode, bytes(result.text) + ' bytes', result.roundTrips + ' round trips',
       result.replies + ' replies', result.reads + ' slot reads/decodes', result.storageMs + ' ms in storage/decode',
-      Math.round(result.transferMs) + ' ms transfer', editorMs + ' ms to populate the editor'].join(' · ');
+      Math.round(result.transferMs) + ' ms transfer', editorMs + ' ms to populate the editor',
+      result.fallbackReason].filter(Boolean).join(' · ');
     feedback.textContent = 'Saved narrative read back.';
   } catch (error) {
     if (client !== current) return;
     current.close();
     ready = false;
-    loadMetrics.textContent = mode + ' failed after ' + Math.round(performance.now() - started) + ' ms. ' + String(error) + '. Reopen to retry.';
-  }
-  busy = false;
-  update();
-});
-testPayload.addEventListener('click', async () => {
-  const current = client;
-  if (!current || !ready || busy) return;
-  const size = Number(payloadSize.value);
-  const prefix = 'Magelight é 😀\r\n\\|';
-  const text = prefix + 'x'.repeat(size - bytes(prefix) - 3) + 'END';
-  const started = performance.now();
-  busy = true;
-  update();
-  try {
-    await current.measurePayload(text);
-    if (client !== current) return;
-    payloadResult.textContent = size + ' bytes matched in both directions in ' + Math.round(performance.now() - started) + ' ms.';
-  } catch (error) {
-    if (client !== current) return;
-    current.close();
-    ready = false;
-    payloadResult.textContent = size + ' bytes failed after ' + Math.round(performance.now() - started) + ' ms. ' + String(error) + '. Reopen to retry.';
+    loadMetrics.textContent = 'Load failed after ' + Math.round(performance.now() - started) + ' ms. ' + String(error);
+    feedback.textContent = 'Could not load the saved narrative. Reopen to retry.';
   }
   busy = false;
   update();

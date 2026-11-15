@@ -428,12 +428,12 @@ Function SendProbeNarrative(string id, string op, Actor npc, int active)
     EndIf
     int readMs = ((Utility.GetCurrentRealTime() - started) * 1000.0) as int
     int size = StringUtil.GetLength(saved)
-    If size > 2048
+    If size > 2048 || (active > 0 && size == 0)
         ProbeReply(id, op, False, "")
         Return
     EndIf
     If op == "L"
-        ProbeReply(id, op, True, readMs + "|" + readCount + "|" + saved)
+        ProbeReply(id, op, True, readMs + "|" + readCount + "|" + size + "|" + saved)
         Return
     EndIf
     int offset = 0

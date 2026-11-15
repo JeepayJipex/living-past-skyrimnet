@@ -6,6 +6,13 @@
 <section class="card"><h2>Ysolda · Technical validation</h2>
 <label for="description">Your shared past</label>
 <textarea id="description" rows="5" placeholder="Ysolda and the player grew up together in Whiterun. They have been friends since childhood."></textarea>
+<button id="replace-draft" class="secondary" type="button" hidden>Clear draft for replacement</button>
+<details>
+  <summary>Exact text for line-ending tests</summary>
+  <label for="exact-text">Draft as a JSON string</label>
+  <input id="exact-text" type="text" spellcheck="false">
+  <button id="load-exact-text" class="secondary" type="button">Load exact draft</button>
+</details>
 <p id="count" class="hint"></p><div class="actions"><button id="apply" disabled>Stage, verify and activate</button><button id="close" class="close-button" disabled>Close</button></div>
 <p id="diagnostic" class="hint" role="status">Storage diagnostic pending.</p><button id="refresh-diagnostic" class="secondary">Refresh diagnostic</button>
 <p id="feedback" class="feedback" role="status">Connecting to the game.</p><p class="hint">Use your configured hotkey or Escape to close.</p>

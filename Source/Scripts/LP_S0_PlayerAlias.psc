@@ -171,6 +171,46 @@ Event OnLivingPastEvent(string eventName, string frame, float numArg, Form sende
     Magelight.Call(viewId, "lpReceive", "2|" + requestId + "|" + op + "|" + responseStatus + "|" + sizeText + "|" + value)
 EndEvent
 
+; PapyrusUtil's text-stream restore treats raw whitespace as a delimiter.
+string Function ReplaceProbeText(string value, string needle, string replacement)
+    int cursor = 0
+    int hit = StringUtil.Find(value, needle)
+    string result = ""
+    While hit >= 0
+        If hit > cursor
+            result += StringUtil.Substring(value, cursor, hit - cursor)
+        EndIf
+        result += replacement
+        cursor = hit + StringUtil.GetLength(needle)
+        hit = StringUtil.Find(value, needle, cursor)
+    EndWhile
+    If cursor < StringUtil.GetLength(value)
+        result += StringUtil.Substring(value, cursor)
+    EndIf
+    Return result
+EndFunction
+
+string Function EncodeProbeText(string value)
+    value = ReplaceProbeText(value, "%", "%25")
+    value = ReplaceProbeText(value, " ", "%20")
+    value = ReplaceProbeText(value, StringUtil.AsChar(9), "%09")
+    value = ReplaceProbeText(value, StringUtil.AsChar(10), "%0A")
+    Return ReplaceProbeText(value, StringUtil.AsChar(13), "%0D")
+EndFunction
+
+string Function ReadProbeSlot(Actor npc, int slot)
+    string storageKey = "LivingPast.Probe.EncodedSlot" + slot
+    If !StorageUtil.HasStringValue(npc, storageKey)
+        Return StorageUtil.GetStringValue(npc, "LivingPast.Probe.Slot" + slot, "")
+    EndIf
+    string value = StorageUtil.GetStringValue(npc, storageKey, "")
+    value = ReplaceProbeText(value, "%20", " ")
+    value = ReplaceProbeText(value, "%09", StringUtil.AsChar(9))
+    value = ReplaceProbeText(value, "%0A", StringUtil.AsChar(10))
+    value = ReplaceProbeText(value, "%0D", StringUtil.AsChar(13))
+    Return ReplaceProbeText(value, "%25", "%")
+EndFunction
+
 ; The probe uses inactive slots and publishes only after explicit verified readback.
 Function ProbeEvent(string frame)
     If !Magelight.IsVisible(viewId) || StringUtil.GetLength(frame) < 31
@@ -211,11 +251,14 @@ Function ProbeEvent(string frame)
         If npc && expected && npc.GetActorBase() == expected && PapyrusUtil.GetVersion() > 0
             bool markerPresent = StorageUtil.HasIntValue(npc, "LivingPast.Probe.Active")
             int marker = StorageUtil.GetIntValue(npc, "LivingPast.Probe.Active", 0)
-            bool slot1 = StorageUtil.HasStringValue(npc, "LivingPast.Probe.Slot1")
-            bool slot2 = StorageUtil.HasStringValue(npc, "LivingPast.Probe.Slot2")
-            int length1 = StringUtil.GetLength(StorageUtil.GetStringValue(npc, "LivingPast.Probe.Slot1", ""))
-            int length2 = StringUtil.GetLength(StorageUtil.GetStringValue(npc, "LivingPast.Probe.Slot2", ""))
+            bool encoded1 = StorageUtil.HasStringValue(npc, "LivingPast.Probe.EncodedSlot1")
+            bool encoded2 = StorageUtil.HasStringValue(npc, "LivingPast.Probe.EncodedSlot2")
+            bool slot1 = encoded1 || StorageUtil.HasStringValue(npc, "LivingPast.Probe.Slot1")
+            bool slot2 = encoded2 || StorageUtil.HasStringValue(npc, "LivingPast.Probe.Slot2")
+            int length1 = StringUtil.GetLength(ReadProbeSlot(npc, 1))
+            int length2 = StringUtil.GetLength(ReadProbeSlot(npc, 2))
             diagnostic += ";marker=" + markerPresent + ";active=" + marker + ";s1=" + slot1 + "," + length1 + ";s2=" + slot2 + "," + length2
+            diagnostic += ";encoded1=" + encoded1 + ";encoded2=" + encoded2
             If markerPresent && marker == 1 && slot1
                 diagnostic += ";read=ok"
             ElseIf markerPresent && marker == 2 && slot2
@@ -286,7 +329,7 @@ Function ProbeEvent(string frame)
                 ok = True
             EndIf
         ElseIf op == "S" && size == 0 && probeLength > 0 && StringUtil.GetLength(probeText) == probeLength && active == probePrevious
-            StorageUtil.SetStringValue(npc, "LivingPast.Probe.Slot" + probeSlot, probeText)
+            StorageUtil.SetStringValue(npc, "LivingPast.Probe.EncodedSlot" + probeSlot, EncodeProbeText(probeText))
             probePrepared = True
             probeReadOffset = 0
             ok = True
@@ -300,7 +343,7 @@ Function ProbeEvent(string frame)
                 Else
                     slot = probeSlot
                 EndIf
-                string saved = StorageUtil.GetStringValue(npc, "LivingPast.Probe.Slot" + slot, "")
+                string saved = ReadProbeSlot(npc, slot)
                 If offset <= StringUtil.GetLength(saved)
                     int take = 128
                     If offset + take > StringUtil.GetLength(saved)

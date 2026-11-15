@@ -5,6 +5,8 @@ import { ProbeClient } from './probe-client';
 
 declare global { interface Window { magelight?: { send(channel: string, payload: string): void }; lpReceive?: (payload: string) => void } }
 const description = document.querySelector<HTMLTextAreaElement>('#description')!;
+const replaceDraft = document.querySelector<HTMLButtonElement>('#replace-draft')!;
+const exactText = document.querySelector<HTMLInputElement>('#exact-text')!;
 const status = document.querySelector<HTMLElement>('#status')!;
 const feedback = document.querySelector<HTMLElement>('#feedback')!;
 const apply = document.querySelector<HTMLButtonElement>('#apply')!;
@@ -16,8 +18,16 @@ let client: ProbeClient | undefined;
 let diagnosticClient: ProbeClient | undefined;
 let ready = false;
 let busy = false;
+let draft = '';
+function showDraft(text: string): void {
+  draft = text;
+  description.value = text;
+  description.readOnly = text.includes('\r');
+  replaceDraft.hidden = !description.readOnly;
+  exactText.value = JSON.stringify(text);
+}
 function update(): void {
-  count.textContent = `${bytes(description.value)} / 2048 bytes`;
+  count.textContent = `${bytes(draft)} / 2048 bytes`;
   apply.disabled = !ready || busy;
   close.disabled = false;
   refreshDiagnostic.disabled = busy || !window.magelight;
@@ -43,7 +53,7 @@ async function diagnose(): Promise<void> {
 }
 async function open(): Promise<void> {
   client?.close();
-  client = undefined; ready = false; busy = false; description.value = ''; update();
+  client = undefined; ready = false; busy = false; showDraft(''); update();
   if (!window.magelight) { status.textContent = 'Browser preview'; return; }
   const current = new ProbeClient(newSession(), frame => window.magelight!.send('lpEvent', frame));
   client = current;
@@ -52,7 +62,7 @@ async function open(): Promise<void> {
   try {
     const active = await current.open();
     if (client !== current) return;
-    description.value = active; ready = true; status.textContent = 'Connected';
+    showDraft(active); ready = true; status.textContent = 'Connected';
     feedback.textContent = `Active probe readback: ${bytes(active)} bytes. Save your game after activation.`;
   } catch (error) {
     if (client !== current) return;
@@ -62,7 +72,7 @@ async function open(): Promise<void> {
 }
 apply.addEventListener('click', async () => {
   const current = client;
-  const text = description.value;
+  const text = draft;
   if (!current || !ready || busy) return;
   try { splitNarrative(text); } catch (error) { feedback.textContent = String(error); return; }
   busy = true; update();
@@ -76,7 +86,32 @@ apply.addEventListener('click', async () => {
   }
   busy = false; update();
 });
-description.addEventListener('input', update);
+description.addEventListener('input', () => {
+  draft = description.value;
+  exactText.value = JSON.stringify(draft);
+  update();
+});
+description.addEventListener('paste', event => {
+  if (!event.clipboardData || description.readOnly) return;
+  const pasted = event.clipboardData.getData('text/plain');
+  if (!pasted.includes('\r')) return;
+  event.preventDefault();
+  showDraft(draft.slice(0, description.selectionStart) + pasted + draft.slice(description.selectionEnd));
+  update();
+});
+replaceDraft.addEventListener('click', () => { showDraft(''); update(); description.focus(); });
+document.querySelector<HTMLButtonElement>('#load-exact-text')!.addEventListener('click', () => {
+  try {
+    const text: unknown = JSON.parse(exactText.value);
+    if (typeof text !== 'string') throw new Error('Enter a JSON string.');
+    splitNarrative(text);
+    showDraft(text);
+    update();
+    feedback.textContent = 'Exact draft loaded. Activate to save it to the probe.';
+  } catch (error) {
+    feedback.textContent = String(error);
+  }
+});
 function cancelSession(): void { const current = client; client = undefined; const diagnostics = diagnosticClient; diagnosticClient = undefined; ready = false; busy = false; current?.close(); diagnostics?.close(); update(); }
 refreshDiagnostic.addEventListener('click', () => void diagnose());
 close.addEventListener('click', () => { cancelSession(); window.magelight?.send('lpClose', 'close'); });

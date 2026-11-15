@@ -4,12 +4,27 @@
 {% set ysolda = formid_to_uuid(108186) %}
 {% if ysolda != 0 and npc.UUID == ysolda and is_player(responseTarget.UUID) %}
 {% set slot = papyrus_util("GetIntValue", npc.UUID, "LivingPast.Probe.Active", 0) %}
-{% if slot == 1 %}
-{% set history = papyrus_util("GetStringValue", npc.UUID, "LivingPast.Probe.Slot1", "") %}
-{% else if slot == 2 %}
-{% set history = papyrus_util("GetStringValue", npc.UUID, "LivingPast.Probe.Slot2", "") %}
-{% else %}
 {% set history = "" %}
+{% set encodedKey = "" %}
+{% set legacyKey = "" %}
+{% if slot == 1 %}
+{% set encodedKey = "LivingPast.Probe.EncodedSlot1" %}
+{% set legacyKey = "LivingPast.Probe.Slot1" %}
+{% else if slot == 2 %}
+{% set encodedKey = "LivingPast.Probe.EncodedSlot2" %}
+{% set legacyKey = "LivingPast.Probe.Slot2" %}
+{% endif %}
+{% if length(encodedKey) > 0 %}
+{% if papyrus_util("HasStringValue", npc.UUID, encodedKey) %}
+{% set encoded = papyrus_util("GetStringValue", npc.UUID, encodedKey, "") %}
+{% set history = replace(encoded, "%20", " ") %}
+{% set history = replace(history, "%09", "\t") %}
+{% set history = replace(history, "%0A", "\n") %}
+{% set history = replace(history, "%0D", "\r") %}
+{% set history = replace(history, "%25", "%") %}
+{% else %}
+{% set history = papyrus_util("GetStringValue", npc.UUID, legacyKey, "") %}
+{% endif %}
 {% endif %}
 {% if length(history) > 0 %}
 ## Your prior history with the player

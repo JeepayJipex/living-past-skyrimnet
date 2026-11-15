@@ -46,6 +46,20 @@ Use a fresh disposable save and the updated probe package. The diagnostic runs a
 
 `ref`, `base`, and `match` report actor reference resolution, base resolution, and their match. `marker` reports whether the integer key exists and `active` is its value. `s1` and `s2` report string-key presence and byte length. `read=ok` means the selected key exists and was read by Papyrus. `read=missing` means the marker selects a missing key. `read=no-active` means the marker is absent or zero. `read=invalid-marker` means the marker is outside the supported slots. `storage=unavailable` indicates that actor validation or PapyrusUtil availability failed, so marker and slot data were not queried. Compare the separate active-probe readback byte count or error with the selected slot length to identify a client readback failure. A length is measured using Papyrus `StringUtil`; byte fidelity remains an in-game validation target.
 
+## Multiline restart regression
+
+A local co-save from the reproduction contained both marker lines under the raw slot key, with a literal LF between them. Both the editor and the Ysolda request lost the second line after loading that save. The public PapyrusUtil implementation stores string values in a text stream and escapes spaces. The probe now also encodes whitespace and the escape character before StorageUtil writes. It decodes the selected slot for the editor and prompt. The diagnostic reports whether each slot uses the new encoding and the length after decoding.
+
+1. Install the current probe using MO2 Replace. Start with a disposable save and open **Exact text for line-ending tests**. Paste the JSON string below into **Draft as a JSON string** and choose **Load exact draft**. This preserves exact input even if the clipboard host normalizes line endings.
+
+       "LPTEST_FIRST_LINE\r\nLPTEST_SECOND_LINE\nÉté 😀 C:\\path\\n %0A %25\t\n"
+
+2. Activate, confirm immediate readback, and record the exact JSON and diagnostic. Create a new manual save and note the matching SKSE co-save. Quit Skyrim completely.
+3. Restart through MO2 and load that exact save. Before any new writes, compare the **Draft as a JSON string** value with the original. In the next Ysolda request, inspect the actual request payload for both markers, Unicode, backslashes, and the original line endings. Compare the decoded JSON value if the viewer shows escaped characters. The existing prompt projection converts square brackets to parentheses to protect prompt structure.
+4. Repeat with the LF-only two-line fixture and a narrative padded to exactly 2,048 UTF-8 bytes. Load the pre-activation save pair to check rollback. The reproduction requires no conversation-history reset. Legacy slots are read as stored and upgraded only by explicit activation. A legacy value already truncated at load needs the original narrative to recover the lost lines.
+
+The automated round-trip test applies the shipped codec rules to a simulated text-stream restore. The full restart and exact SkyrimNet request rendering require the in-game observations above.
+
 ## Inspect the actual dialogue request
 
 Open SkyrimNet dashboard **System → Logs → API Requests**, select the new dialogue request by timestamp and actor, and open its **Request payload**. Search the complete request for both unique markers and count occurrences. Speak to Ysolda without mentioning the marker and verify her direct response request contains it once. Speak to Carlotta while Ysolda is nearby, before either NPC voices the private fact, and verify the marker is absent. Check the player hidden from Ysolda, Ysolda as a secondary subject, thoughts, warmup and dynamic-bio generation. Inspect the effective player biography markers in the same request. A dialogue response or profile preview alone does not establish recipient isolation.

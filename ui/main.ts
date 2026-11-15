@@ -1,70 +1,69 @@
 import './style.css';
-import { Protocol, type EventName } from './protocol';
+import { Protocol, validText, bytes, type Operation } from './protocol';
 declare global { interface Window { magelight?: { send(channel: string, payload: string): void }; lpReceive?: (payload: string) => void } }
-const origin = document.querySelector<HTMLInputElement>('#origin')!;
-const biography = document.querySelector<HTMLTextAreaElement>('#biography')!;
-const status = document.querySelector<HTMLElement>('#bridge-status')!;
-const feedback = document.querySelector<HTMLElement>('#draft-feedback')!;
-const eventLog = document.querySelector<HTMLOListElement>('#event-log')!;
-const closeButton = document.querySelector<HTMLButtonElement>('#close')!;
-const timers = new Map<string, ReturnType<typeof setTimeout>>();
+const description = document.querySelector<HTMLTextAreaElement>('#description')!;
+const status = document.querySelector<HTMLElement>('#status')!;
+const feedback = document.querySelector<HTMLElement>('#feedback')!;
+const apply = document.querySelector<HTMLButtonElement>('#apply')!;
+const close = document.querySelector<HTMLButtonElement>('#close')!;
+const count = document.querySelector<HTMLElement>('#count')!;
 let protocol: Protocol | undefined;
-let draftTimer: ReturnType<typeof setTimeout> | undefined;
-let lastDraft = '';
-function log(message: string): void {
-  const item = document.createElement('li'); item.textContent = message; eventLog.prepend(item);
-  while (eventLog.children.length > 8) eventLog.lastElementChild?.remove();
+let ready = false;
+let busy = false;
+let uncertain = false;
+const timers = new Map<string, ReturnType<typeof setTimeout>>();
+function update(): void {
+  count.textContent = `${bytes(description.value)} / 160 bytes`;
+  apply.disabled = !ready || busy || uncertain || !validText(description.value);
+  close.disabled = !ready;
 }
-function connection(value: boolean): void {
-  closeButton.disabled = !value;
-  status.textContent = value ? 'Papyrus bridge connected' : window.magelight ? 'Papyrus bridge unavailable — use Insert or Escape to close' : 'Browser preview';
-}
-function send(type: EventName): void {
-  if (!window.magelight) { log(`Preview only: ${type}`); return; }
-  if (!protocol || document.visibilityState !== 'visible') return;
+function send(operation: Operation, text = ''): void {
+  if (!protocol || !window.magelight || document.visibilityState !== 'visible') return;
   const current = protocol;
-  const request = current.request(type, { origin: origin.value, biography: biography.value });
-  const serialized = JSON.stringify(request);
-  const timer = setTimeout(() => { timers.delete(request.id); if (current.timeout(request.id)) log(`Timed out: ${type} (${request.id})`); }, 5000);
-  timers.set(request.id, timer);
-  window.magelight.send('lpEvent', serialized);
-  log(`Sent: ${type} (${request.id})`);
+  const request = current.request(operation, text);
+  if (operation === 'A') busy = true;
+  update();
+  timers.set(request.id, setTimeout(() => {
+    timers.delete(request.id);
+    if (current.timeout(request.id)) {
+      if (operation === 'A') { busy = false; uncertain = true; }
+      feedback.textContent = 'No response. Reopen the editor to check the stored relationship.';
+      update();
+    }
+  }, 5000));
+  window.magelight.send('lpEvent', request.frame);
 }
-window.lpReceive = (raw: string): void => {
-  const result = protocol?.receive(raw);
-  if (!result) return;
-  if (result.kind !== 'verified') { log(`Ignored response: ${result.kind}`); return; }
-  const { request } = result;
-  clearTimeout(timers.get(request.id)); timers.delete(request.id); connection(protocol?.connected === true);
-  log(`Verified: ${request.type} (${request.id})`);
-  if (request.type === 'close') window.magelight?.send('lpClose', JSON.stringify({ protocol: 1, id: request.id, type: 'close' }));
+window.lpReceive = (frame: string): void => {
+  const result = protocol?.receive(frame);
+  if (!result || result.kind !== 'verified') return;
+  clearTimeout(timers.get(result.id)); timers.delete(result.id);
+  if (result.status === 'E') {
+    busy = false;
+    feedback.textContent = 'Relationship unavailable. Check the game dependencies and logs.';
+  } else if (result.operation === 'O') {
+    description.value = result.text; ready = true; status.textContent = 'Connected';
+    feedback.textContent = result.text ? 'Stored relationship loaded.' : 'No relationship has been applied.';
+  } else if (result.operation === 'A') {
+    busy = false; feedback.textContent = 'Applied. Save your game to keep it.';
+  } else {
+    window.magelight?.send('lpClose', 'close');
+  }
+  update();
 };
-connection(false);
-for (const field of [origin, biography]) field.addEventListener('input', () => {
-  clearTimeout(draftTimer);
-  draftTimer = setTimeout(() => {
-    const draft = JSON.stringify([origin.value, biography.value]);
-    if (draft !== lastDraft) { lastDraft = draft; send('draft.changed'); }
-  }, 300);
-});
-document.querySelector<HTMLButtonElement>('#validate')!.addEventListener('click', () => {
-  feedback.textContent = origin.value.trim() && biography.value.trim() ? 'Draft contains both fields; game validation is not implemented.' : 'Enter an origin and a short biography.';
-  send('validate');
-});
-document.querySelector<HTMLButtonElement>('#apply')!.addEventListener('click', () => { feedback.textContent = 'Dry run only. No profile or game state was changed.'; send('apply'); });
-closeButton.addEventListener('click', () => send('close'));
 function reset(): void {
-  clearTimeout(draftTimer); draftTimer = undefined;
   for (const timer of timers.values()) clearTimeout(timer);
-  timers.clear(); protocol = undefined; lastDraft = ''; connection(false);
+  timers.clear(); protocol = undefined; ready = false; busy = false; uncertain = false; description.value = '';
+  status.textContent = window.magelight ? 'Connecting' : 'Browser preview'; update();
 }
-function opened(): void {
+function open(): void {
   reset();
-  protocol = new Protocol(`${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`);
-  send('open');
+  if (!window.magelight) return;
+  const random = new Uint8Array(8); crypto.getRandomValues(random);
+  protocol = new Protocol(Array.from(random, value => value.toString(16).padStart(2, '0')).join(''));
+  send('O');
 }
-if (document.visibilityState === 'visible' && window.magelight) opened();
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') opened();
-  else reset();
-});
+description.addEventListener('input', update);
+apply.addEventListener('click', () => send('A', description.value));
+close.addEventListener('click', () => send('C'));
+document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' ? open() : reset());
+if (document.visibilityState === 'visible') open(); else reset();

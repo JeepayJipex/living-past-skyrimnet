@@ -1,50 +1,11 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Living Past · Stage 0</title>
-  </head>
-  <body>
-    <main class="shell">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">Living Past / Feasibility prototype</p>
-          <h1>A life before the adventure</h1>
-        </div>
-        <span id="bridge-status" class="status">Checking bridge</span>
-      </header>
-
-      <section class="notice" aria-label="Prototype limitations">
-        <strong>Stage 0 UI test</strong>
-        <span>This screen sends events only. It does not save a profile or change the game.</span>
-      </section>
-
-      <div class="columns">
-        <section class="card" aria-labelledby="draft-title">
-          <p class="section-number">01 / Test draft</p>
-          <h2 id="draft-title">A small piece of your past</h2>
-          <label for="origin">Origin</label>
-          <input id="origin" name="origin" maxlength="40" value="Whiterun" autocomplete="off" />
-          <label for="biography">Short biography</label>
-          <textarea id="biography" name="biography" maxlength="240" rows="5" placeholder="A few words about your character's life before the adventure."></textarea>
-          <div class="actions">
-            <button id="validate" type="button">Validate draft</button>
-            <button id="apply" type="button" class="secondary">Apply event (dry run)</button>
-          </div>
-          <p id="draft-feedback" class="feedback" role="status">Edit the fields to send a draft.changed event.</p>
-        </section>
-
-        <section class="card diagnostics" aria-labelledby="events-title">
-          <p class="section-number">02 / Bridge diagnostics</p>
-          <h2 id="events-title">Event exchange</h2>
-          <p>Use this panel to verify page → Papyrus and Papyrus → page messages. The event list is temporary.</p>
-          <ol id="event-log" aria-live="polite"></ol>
-          <button id="close" type="button" class="close-button">Close Living Past</button>
-          <p class="hint">Insert or Escape can also close the Magelight panel.</p>
-        </section>
-      </div>
-    </main>
-    <script type="module" src="/main.ts"></script>
-  </body>
-</html>
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Living Past</title></head>
+<body><main class="shell">
+<header class="topbar"><div><p class="eyebrow">Living Past</p><h1>A life before the adventure</h1></div><span id="status" class="status">Connecting</span></header>
+<section class="card"><h2>Ysolda · Whiterun</h2>
+<label for="description">Your shared past</label>
+<textarea id="description" rows="5" placeholder="Ysolda and the player grew up together in Whiterun. They have been friends since childhood."></textarea>
+<p id="count" class="hint"></p><div class="actions"><button id="apply" disabled>Apply relationship</button><button id="close" class="close-button" disabled>Close</button></div>
+<p id="feedback" class="feedback" role="status">Connecting to the game.</p><p class="hint">Use your configured hotkey or Escape to close.</p>
+</section></main><script type="module" src="/main.ts"></script></body></html>

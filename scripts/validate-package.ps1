@@ -7,9 +7,9 @@ try {
     if (($names | Sort-Object -Unique).Count -ne $names.Count) { throw 'Duplicate archive entries.' }
     foreach ($name in $names) {
         if ($name.StartsWith('/') -or $name -match '(^|/)\.\.(/|$)' -or $name -match '^[A-Za-z]:') { throw "Unsafe archive path: $name" }
-        if ($name -notmatch '^(LivingPastStage0\.esp|Scripts/LP_S0_PlayerAlias\.pex|Magelight/LivingPast/manifest\.json|Magelight/LivingPast/views/spike/(index\.html|assets/[^/]+))$') { throw "Unexpected archive entry: $name" }
+        if ($name -notmatch '^(LivingPastStage0\.esp|Scripts/LP_S0_PlayerAlias\.pex|SKSE/Plugins/SkyrimNet/external/jeepayjipex\.living-past/(manifest\.json|prompts/submodules/character_bio/0651_living_past_relationship\.prompt)|Magelight/LivingPast/manifest\.json|Magelight/LivingPast/views/spike/(index\.html|assets/[^/]+))$') { throw "Unexpected archive entry: $name" }
     }
-    $required = @('LivingPastStage0.esp', 'Scripts/LP_S0_PlayerAlias.pex', 'Magelight/LivingPast/manifest.json', 'Magelight/LivingPast/views/spike/index.html')
+    $required = @('LivingPastStage0.esp', 'Scripts/LP_S0_PlayerAlias.pex', 'SKSE/Plugins/SkyrimNet/external/jeepayjipex.living-past/manifest.json', 'SKSE/Plugins/SkyrimNet/external/jeepayjipex.living-past/prompts/submodules/character_bio/0651_living_past_relationship.prompt', 'Magelight/LivingPast/manifest.json', 'Magelight/LivingPast/views/spike/index.html')
     foreach ($name in $required) { if ($name -cnotin $names) { throw "Missing archive entry: $name" } }
     $htmlEntry = $zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -ceq 'Magelight/LivingPast/views/spike/index.html' }
     $reader = [IO.StreamReader]::new($htmlEntry.Open())

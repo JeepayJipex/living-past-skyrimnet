@@ -52,6 +52,18 @@ test('round trips long Unicode through the client and staged readback', async ()
   assert.ok(server.frames.every(frame => bytes(frame.slice(31)) <= 160));
 });
 
+test('diagnostic request is independently correlated and does not change active state', async () => {
+  const frames = [];
+  const client = new ProbeClient('0123456789abcdef', frame => frames.push(frame), 30);
+  const pending = client.diagnose();
+  const frame = frames[0];
+  assert.equal(frame[23], 'X');
+  const result = 'ref=True;base=True;match=True;marker=False;active=0;s1=True,2048;s2=False,0;read=no-active';
+  client.receive(frame.slice(0, 25) + 'S|' + String(bytes(result)).padStart(3, '0') + '|' + result);
+  assert.equal(await pending, result);
+  assert.equal(frames.length, 1);
+});
+
 test('ignores stale, duplicate, reordered and malformed replies', async () => {
   const frames = []; const client = new ProbeClient('0123456789abcdef', frame => frames.push(frame), 30);
   const opening = client.open();

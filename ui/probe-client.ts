@@ -33,7 +33,7 @@ export class ProbeClient {
     });
   }
   receive(frame: string): void {
-    const match = /^3\|([0-9a-f]{16}[0-9]{4})\|([OBDSRK])\|([SE])\|([0-9]{3})\|/.exec(frame);
+    const match = /^3\|([0-9a-f]{16}[0-9]{4})\|([OBDSRKX])\|([SE])\|([0-9]{3})\|/.exec(frame);
     const pending = this.pending;
     if (!match || !pending || pending.id !== match[1] || pending.op !== match[2]) return;
     const value = frame.slice(match[0].length);
@@ -53,6 +53,7 @@ export class ProbeClient {
     }
   }
   async open(): Promise<string> { await this.request('O'); return this.read('0'); }
+  async diagnose(): Promise<string> { return this.request('X'); }
   async activate(text: string): Promise<void> {
     const chunks = splitNarrative(text);
     try {

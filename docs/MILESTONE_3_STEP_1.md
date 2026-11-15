@@ -35,6 +35,17 @@ Copy multiline text containing accented characters from the Living Past view to 
 2. Open Living Past with its configured hotkey. Paste a 2,048-byte narrative containing several lines, accented characters, emoji, quotes, a backslash and vertical bars. Use unique start and end markers. The byte counter shows the UTF-8 length. Activate and reopen to verify the exact readback. Try 2,049 bytes and verify rejection.
 3. Activate a different narrative, then interrupt transfer and close or reload before completion. Reopen and verify the last successful activation. Close immediately after sending activation and reopen to inspect the authoritative active value. Activation may have completed before dismissal. If activation times out, reopen to reconcile the active value. Save and reload, exit and restart Skyrim, load the pre-activation save and its matching co-save, then switch to a different playthrough. Inspect the active value and the first rendered request after every load.
 
+## Persistence diagnostic
+
+Use a fresh disposable save and the updated probe package. The diagnostic runs automatically when the view opens. **Refresh diagnostic** repeats the same read-only check. Record the full diagnostic line and the separate active-probe readback message at each stage. Avoid recording the narrative itself in shared logs.
+
+1. Open the probe before activation and record the diagnostic and active readback.
+2. Activate a 2,048-byte narrative, refresh the diagnostic, and record both results.
+3. Make a new manual save and note its filename and matching `.skse` co-save. Quit Skyrim completely.
+4. Restart Skyrim through MO2, load that exact save with its matching co-save, and open the probe. Before performing any activation or other writes, record the diagnostic and active readback again.
+
+`ref`, `base`, and `match` report actor reference resolution, base resolution, and their match. `marker` reports whether the integer key exists and `active` is its value. `s1` and `s2` report string-key presence and byte length. `read=ok` means the selected key exists and was read by Papyrus. `read=missing` means the marker selects a missing key. `read=no-active` means the marker is absent or zero. `read=invalid-marker` means the marker is outside the supported slots. `storage=unavailable` indicates that actor validation or PapyrusUtil availability failed, so marker and slot data were not queried. Compare the separate active-probe readback byte count or error with the selected slot length to identify a client readback failure. A length is measured using Papyrus `StringUtil`; byte fidelity remains an in-game validation target.
+
 ## Inspect the actual dialogue request
 
 Open SkyrimNet dashboard **System → Logs → API Requests**, select the new dialogue request by timestamp and actor, and open its **Request payload**. Search the complete request for both unique markers and count occurrences. Speak to Ysolda without mentioning the marker and verify her direct response request contains it once. Speak to Carlotta while Ysolda is nearby, before either NPC voices the private fact, and verify the marker is absent. Check the player hidden from Ysolda, Ysolda as a secondary subject, thoughts, warmup and dynamic-bio generation. Inspect the effective player biography markers in the same request. A dialogue response or profile preview alone does not establish recipient isolation.

@@ -201,6 +201,38 @@ Function ProbeEvent(string frame)
     EndIf
     Actor npc = Game.GetFormFromFile(0x0001A69A, "Skyrim.esm") as Actor
     ActorBase expected = Game.GetFormFromFile(0x00013BAB, "Skyrim.esm") as ActorBase
+    If op == "X" && size == 0
+        string diagnostic = "ref=" + (npc != None) + ";base=" + (expected != None)
+        If npc && expected
+            diagnostic += ";match=" + (npc.GetActorBase() == expected)
+        Else
+            diagnostic += ";match=unavailable"
+        EndIf
+        If npc && expected && npc.GetActorBase() == expected && PapyrusUtil.GetVersion() > 0
+            bool markerPresent = StorageUtil.HasIntValue(npc, "LivingPast.Probe.Active")
+            int marker = StorageUtil.GetIntValue(npc, "LivingPast.Probe.Active", 0)
+            bool slot1 = StorageUtil.HasStringValue(npc, "LivingPast.Probe.Slot1")
+            bool slot2 = StorageUtil.HasStringValue(npc, "LivingPast.Probe.Slot2")
+            int length1 = StringUtil.GetLength(StorageUtil.GetStringValue(npc, "LivingPast.Probe.Slot1", ""))
+            int length2 = StringUtil.GetLength(StorageUtil.GetStringValue(npc, "LivingPast.Probe.Slot2", ""))
+            diagnostic += ";marker=" + markerPresent + ";active=" + marker + ";s1=" + slot1 + "," + length1 + ";s2=" + slot2 + "," + length2
+            If markerPresent && marker == 1 && slot1
+                diagnostic += ";read=ok"
+            ElseIf markerPresent && marker == 2 && slot2
+                diagnostic += ";read=ok"
+            ElseIf !markerPresent || marker == 0
+                diagnostic += ";read=no-active"
+            ElseIf marker == 1 || marker == 2
+                diagnostic += ";read=missing"
+            Else
+                diagnostic += ";read=invalid-marker"
+            EndIf
+        Else
+            diagnostic += ";storage=unavailable"
+        EndIf
+        ProbeReply(id, op, True, diagnostic)
+        Return
+    EndIf
     If !npc || !expected || npc.GetActorBase() != expected || PapyrusUtil.GetVersion() <= 0
         ProbeReply(id, op, False, "")
         Return

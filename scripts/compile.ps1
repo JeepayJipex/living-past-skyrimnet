@@ -8,5 +8,9 @@ $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $source = (Resolve-Path (Join-Path $PSScriptRoot '../Source/Scripts/LP_S0_PlayerAlias.psc')).Path
 $imports = @((Split-Path $source)) + $ImportDirectories
+foreach ($required in @('StorageUtil.psc', 'PapyrusUtil.psc')) {
+    $found = @($imports | Where-Object { Test-Path -LiteralPath (Join-Path $_ $required) -PathType Leaf })
+    if ($found.Count -eq 0) { throw "Papyrus import missing: $required" }
+}
 & $Compiler $source "-f=$Flags" "-i=$($imports -join ';')" "-o=$OutputDirectory"
 if ($LASTEXITCODE -ne 0) { throw 'Papyrus compilation failed.' }

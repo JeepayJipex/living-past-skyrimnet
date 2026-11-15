@@ -10,10 +10,11 @@ const count = document.querySelector<HTMLElement>('#count')!;
 let protocol: Protocol | undefined;
 let ready = false;
 let busy = false;
+let uncertain = false;
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 function update(): void {
   count.textContent = `${bytes(description.value)} / 160 bytes`;
-  apply.disabled = !ready || busy || !validText(description.value);
+  apply.disabled = !ready || busy || uncertain || !validText(description.value);
   close.disabled = !ready;
 }
 function send(operation: Operation, text = ''): void {
@@ -25,7 +26,7 @@ function send(operation: Operation, text = ''): void {
   timers.set(request.id, setTimeout(() => {
     timers.delete(request.id);
     if (current.timeout(request.id)) {
-      if (operation === 'A') busy = false;
+      if (operation === 'A') { busy = false; uncertain = true; }
       feedback.textContent = 'No response. Reopen the editor to check the stored relationship.';
       update();
     }
@@ -51,7 +52,7 @@ window.lpReceive = (frame: string): void => {
 };
 function reset(): void {
   for (const timer of timers.values()) clearTimeout(timer);
-  timers.clear(); protocol = undefined; ready = false; busy = false; description.value = '';
+  timers.clear(); protocol = undefined; ready = false; busy = false; uncertain = false; description.value = '';
   status.textContent = window.magelight ? 'Connecting' : 'Browser preview'; update();
 }
 function open(): void {

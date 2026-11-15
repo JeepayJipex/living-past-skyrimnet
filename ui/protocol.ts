@@ -2,7 +2,7 @@ export type Operation = 'O' | 'A' | 'C';
 const encoder = new TextEncoder();
 export const bytes = (value: string): number => encoder.encode(value).length;
 export function validText(value: string): boolean {
-  return value.trim().length > 0 && bytes(value) <= 160 && !/[\x00-\x1f\x7f]/.test(value);
+  return value.trim().length > 0 && bytes(value) <= 160 && !/[\x00-\x1f\x7f-\x9f\u2028\u2029]/.test(value);
 }
 export class Protocol {
   private sequence = 0;
@@ -25,7 +25,7 @@ export class Protocol {
     const match = /^2\|([0-9a-f]{16}[0-9]{4})\|([OAC])\|([SE])\|([0-9]{3})\|/.exec(frame);
     if (!match) return { kind: 'invalid' };
     const text = frame.slice(match[0].length);
-    if (bytes(text) !== Number(match[4]) || bytes(text) > 160 || /[\x00-\x1f\x7f]/.test(text)) return { kind: 'invalid' };
+    if (bytes(text) !== Number(match[4]) || bytes(text) > 160 || /[\x00-\x1f\x7f-\x9f\u2028\u2029]/.test(text)) return { kind: 'invalid' };
     const pending = this.pending.get(match[1]);
     if (!pending) return { kind: 'unknown' };
     if (pending.operation !== match[2] || (match[3] === 'S' && pending.operation === 'A' && pending.text !== text)) return { kind: 'mismatch' };

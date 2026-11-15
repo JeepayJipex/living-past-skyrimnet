@@ -2,12 +2,16 @@ param(
     [Parameter(Mandatory = $true)][string]$Plugin,
     [Parameter(Mandatory = $true)][string]$Pex,
     [Parameter(Mandatory = $true)][string]$ContentValidator,
-    [Parameter(Mandatory = $true)][string]$BaseTree
+    [string]$BaseTree
 )
 $ErrorActionPreference = 'Stop'
 if (-not (Test-Path -LiteralPath $Plugin -PathType Leaf) -or [IO.Path]::GetFileName($Plugin) -ne 'LivingPastStage0.esp') { throw 'Supply the locally created LivingPastStage0.esp.' }
 if (-not (Test-Path -LiteralPath $Pex -PathType Leaf) -or [IO.Path]::GetFileName($Pex) -ne 'LP_S0_PlayerAlias.pex') { throw 'Supply the compiled LP_S0_PlayerAlias.pex.' }
-& $ContentValidator (Join-Path $PSScriptRoot "../content/jeepayjipex.living-past") --base-tree $BaseTree
+$validatorArguments = @((Join-Path $PSScriptRoot "../content/jeepayjipex.living-past"))
+if ($PSBoundParameters.ContainsKey('BaseTree')) {
+    $validatorArguments += @('--base-tree', $BaseTree)
+}
+& $ContentValidator @validatorArguments
 if ($LASTEXITCODE -ne 0) { throw "SkyrimNet content validation failed." }
 npm run build
 if ($LASTEXITCODE -ne 0) { throw 'UI build failed.' }

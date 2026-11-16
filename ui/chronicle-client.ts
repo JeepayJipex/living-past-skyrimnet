@@ -1,9 +1,17 @@
-import { bytes } from './protocol.ts';
+import { bytes, validText } from './protocol.ts';
 import { splitNarrative } from './narrative.ts';
 
 type Pending = { id: string; op: string; chunks: string; resolve: (value: string) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> };
 export type LoadMode = 'baseline' | 'batch' | 'large';
 const wideFrame = (op: string) => op === 'L' || op === 'P';
+
+export function validateLabel(label: string): void {
+  if (!label.trim()) throw new Error('Enter a relationship label.');
+  if (bytes(label) > 96) throw new Error('Keep the relationship label to 96 UTF-8 bytes or fewer.');
+  if (!validText(label) || new TextDecoder('utf-8', { fatal: true }).decode(new TextEncoder().encode(label)) !== label) {
+    throw new Error('Remove unsupported control characters or invalid Unicode from the relationship label.');
+  }
+}
 
 export class ChronicleClient {
   private sequence = 0;
@@ -123,9 +131,9 @@ export class ChronicleClient {
   }
   async diagnose(): Promise<string> { return this.request('X'); }
   async activate(label: string, text: string): Promise<void> {
+    validateLabel(label);
     const chunks = splitNarrative(text);
     try {
-      if (!label.trim() || bytes(label) > 96 || /[\x00-\x1f\x7f-\x9f]/u.test(label)) throw new Error('Invalid relationship label');
       if (await this.request('H', label) !== label) throw new Error('Label readback mismatch');
       await this.request('B', String(bytes(text)).padStart(4, '0'));
       let offset = 0;

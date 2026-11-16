@@ -11,8 +11,10 @@ class Game {
   label = '';
   client;
   failRead = false;
+  frames = [];
   connect(id = '0123456789abcdef') { this.client = new ChronicleClient(id, frame => this.handle(frame), 100); return this.client; }
   handle(frame) {
+    this.frames.push(frame);
     const id = frame.slice(2, 22), op = frame[23];
     const value = frame.slice(op === 'L' || op === 'P' ? 32 : 31);
     if (op === 'O') this.selected = value;
@@ -39,6 +41,17 @@ class Game {
     queueMicrotask(() => this.client?.receive(reply));
   }
 }
+
+test('an overlong UTF-8 label leaves the session usable for correction', async () => {
+  const game = new Game();
+  const client = game.connect();
+  await client.openIndex('1');
+  const count = game.frames.length;
+  await assert.rejects(client.activate('é'.repeat(49), 'History'), /96 UTF-8 bytes/);
+  assert.equal(game.frames.length, count);
+  await client.activate('é'.repeat(48), 'History');
+  assert.deepEqual(game.actors.get('1'), { revision: 1, label: 'é'.repeat(48), text: 'History' });
+});
 
 test('two actors keep independent labels, histories and revisions', async () => {
   const game = new Game(); let client = game.connect();

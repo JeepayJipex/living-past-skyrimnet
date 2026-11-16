@@ -1,5 +1,5 @@
 import './style.css';
-import { ChronicleClient } from './chronicle-client';
+import { ChronicleClient, validateLabel } from './chronicle-client';
 import { bytes } from './protocol';
 import { splitNarrative } from './narrative';
 
@@ -30,7 +30,16 @@ function session(): ChronicleClient {
   return new ChronicleClient(Array.from(random, n => n.toString(16).padStart(2, '0')).join(''), frame => window.magelight!.send('lpEvent', frame));
 }
 window.lpReceive = frame => client?.receive(frame);
-window.lpGameLoaded = () => { ++generation; client?.close(); selected = ''; dirty = false; };
+window.lpGameLoaded = () => { clearView(); if (document.visibilityState === 'visible') void open(); };
+function clearView(): void {
+  ++generation;
+  client?.close(); client = undefined;
+  selected = ''; revision = 0; dirty = false; busy = false;
+  originalText = ''; textEdited = false; index.clear();
+  label.value = ''; description.value = ''; name.textContent = '';
+  editor.hidden = true; empty.hidden = false; feedback.textContent = '';
+  render();
+}
 function render(): void {
   people.replaceChildren(...actors.map(actor => {
     const button = document.createElement('button');
@@ -66,7 +75,10 @@ async function choose(id: string): Promise<void> {
     const fresh = await current.openIndex(id);
     let text = '';
     if (fresh.revision) {
-      const result = await current.loadPreferred(id, fresh.revision, () => { current = session(); client = current; return current; });
+      const result = await current.loadPreferred(id, fresh.revision, () => {
+        if (turn !== generation) throw new Error('View session changed');
+        current = session(); client = current; return current;
+      });
       text = result.text;
     }
     if (turn !== generation) return;
@@ -81,7 +93,7 @@ apply.addEventListener('click', async () => {
   const current = client; const id = selected; const turn = generation;
   if (!current || !id || busy) return;
   const text = textEdited ? description.value : originalText;
-  try { splitNarrative(text); } catch (error) { feedback.textContent = String(error); return; }
+  try { validateLabel(label.value); splitNarrative(text); } catch (error) { feedback.textContent = error instanceof Error ? error.message : String(error); return; }
   busy = true; render();
   try {
     await current.activate(label.value, text);
@@ -93,17 +105,6 @@ apply.addEventListener('click', async () => {
 });
 for (const input of [label, description]) input.addEventListener('input', () => { dirty = true; render(); });
 description.addEventListener('input', () => { textEdited = true; });
-close.addEventListener('click', () => { if (dirty && !confirm('Discard your unsaved changes?')) return; ++generation; client?.close(); window.magelight?.send('lpClose', 'close'); });
-async function resumeDraft(): Promise<void> {
-  const turn = ++generation; busy = true; render();
-  try {
-    const current = session(); client = current;
-    const entry = await current.openIndex(selected);
-    if (turn !== generation) return;
-    if (entry.revision !== revision) throw new Error('The saved history changed while the chronicle was closed.');
-    feedback.textContent = 'Your unsaved draft is still here.';
-  } catch (error) { if (turn !== generation) return; feedback.textContent = `${String(error)} Copy your draft before reopening.`; client?.close(); }
-  busy = false; render();
-}
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { if (dirty && selected) void resumeDraft(); else void open(); } else { ++generation; client?.close(); } });
+close.addEventListener('click', () => { if (dirty && !confirm('Discard your unsaved changes?')) return; clearView(); window.magelight?.send('lpClose', 'close'); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void open(); else clearView(); });
 if (document.visibilityState === 'visible') void open();

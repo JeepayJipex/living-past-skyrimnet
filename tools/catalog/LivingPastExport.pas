@@ -1,6 +1,9 @@
 unit UserScript;
 
 // Read-only export. Run on all loaded files in script mode.
+const
+  NPC_FLAG_UNIQUE = $00000020;
+
 var
   candidates, counts: TStringList;
   deletedCount, disabledCount, nonPersistentCount, badBaseCount: Integer;
@@ -58,16 +61,21 @@ begin
   base := WinningOverride(base);
   if (Signature(base) <> 'NPC_') or GetIsDeleted(base) then begin Inc(badBaseCount); Exit; end;
   if ElementExists(base, 'TPLT') then begin Inc(badBaseCount); Exit; end;
-  if (GetElementNativeValues(base, 'ACBS\Flags') and 1) = 0 then begin Inc(nonUniqueCount); Exit; end;
+  if (GetElementNativeValues(base, 'ACBS\Flags') and NPC_FLAG_UNIQUE) = 0 then begin Inc(nonUniqueCount); Exit; end;
   name := Trim(GetElementEditValues(base, 'FULL'));
   if name = '' then begin Inc(unnamedCount); Exit; end;
   origin := MasterOrSelf(ref);
   key := LowerCase(GetFileName(GetFile(origin))) + ':' + IntToHex(FixedFormID(origin) and $00FFFFFF, 6);
   origin := MasterOrSelf(base);
   baseKey := LowerCase(GetFileName(GetFile(origin))) + ':' + IntToHex(FixedFormID(origin) and $00FFFFFF, 6);
-  cell := LinksTo(ElementBySignature(ref, 'CELL'));
+  // A placed actor belongs to a reference group whose ChildrenOf is its CELL.
+  cell := GetContainer(ref);
+  while Assigned(cell) and (ElementType(cell) <> etGroupRecord) do
+    cell := GetContainer(cell);
+  if Assigned(cell) then cell := ChildrenOf(cell);
   location := '';
-  if Assigned(cell) then location := EditorID(cell);
+  if Assigned(cell) then
+    if Signature(cell) = 'CELL' then location := EditorID(cell);
   row := '{"reference":' + Identity(ref) + ',"base":' + Identity(base) +
     ',"name":' + JsonString(name) + ',"editorId":' + JsonString(EditorID(base)) +
     ',"location":' + JsonString(location) + '}';

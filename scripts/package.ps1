@@ -22,7 +22,7 @@ Copy-Item -LiteralPath $Pex -Destination (Join-Path $stage 'Scripts/LP_S0_Player
 Copy-Item -LiteralPath $Plugin -Destination (Join-Path $stage 'LivingPastStage0.esp') -Force
 New-Item -ItemType Directory -Force -Path (Join-Path $stage "SKSE/Plugins/SkyrimNet/external") | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "../content/jeepayjipex.living-past") -Destination (Join-Path $stage "SKSE/Plugins/SkyrimNet/external") -Recurse
-$output = Join-Path $PSScriptRoot '../dist/LivingPast-M3-Step1-Probe.zip'
+$output = Join-Path $PSScriptRoot '../dist/LivingPast-M3-Step2-Chronicle.zip'
 New-Item -ItemType Directory -Force -Path (Split-Path $output) | Out-Null
 Compress-Archive -Path (Join-Path $stage 'Magelight'), (Join-Path $stage 'Scripts'), (Join-Path $stage 'LivingPastStage0.esp'), (Join-Path $stage 'SKSE') -DestinationPath $output -Force
 & (Join-Path $PSScriptRoot 'validate-package.ps1') -Archive $output

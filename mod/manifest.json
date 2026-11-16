@@ -1,7 +1,7 @@
 {
   "modId": "LivingPast",
-  "name": "Living Past Stage 0 UI Spike",
-  "version": "0.0.1",
+  "name": "Living Past",
+  "version": "0.3.0",
   "minHost": "1.8.0",
   "session": "isolated",
   "network": "file",

@@ -66,3 +66,11 @@ test('failed staged readback preserves both active relationships', async () => {
 test('unknown actor is rejected', async () => {
   const game = new Game(); await assert.rejects(game.connect().openIndex('3'), /rejected/);
 });
+
+test('fallback checks the same actor and revision before retrying', async () => {
+  const game = new Game(); let first = game.connect(); await first.openIndex('1'); await first.activate('Friend', 'Original');
+  first = game.connect('aaaaaaaaaaaaaaaa'); const entry = await first.openIndex('1');
+  first.load = async () => { throw new Error('Large reply failed'); };
+  game.actors.get('1').revision++;
+  await assert.rejects(first.loadPreferred('1', entry.revision, () => game.connect('bbbbbbbbbbbbbbbb')), /changed/);
+});

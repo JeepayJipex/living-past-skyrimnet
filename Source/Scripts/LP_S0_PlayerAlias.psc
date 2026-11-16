@@ -13,6 +13,8 @@ int probeSequence = 0
 int probeReadOffset = 0
 string probeReadSnapshot = ""
 int probeSnapshotSlot = 0
+Actor chronicleActor
+string chronicleLabel = ""
 
 Event OnInit()
     Setup()
@@ -39,6 +41,7 @@ Function Setup()
     If viewId != 0
         Magelight.RegisterListener(viewId, "lpEvent")
         Magelight.RegisterListener(viewId, "lpClose")
+        Magelight.Call(viewId, "lpGameLoaded", "")
     EndIf
 EndFunction
 
@@ -93,6 +96,10 @@ EndFunction
 
 Event OnLivingPastEvent(string eventName, string frame, float numArg, Form sender)
     If numArg as int != viewId || StringUtil.GetLength(frame) < 31
+        Return
+    EndIf
+    If StringUtil.Substring(frame, 0, 2) == "4|"
+        ChronicleEvent(frame)
         Return
     EndIf
     If StringUtil.Substring(frame, 0, 2) == "3|"
@@ -472,6 +479,285 @@ Function SendProbeFrame(string id, string op, string status, string value)
         n = "0" + n
     EndIf
     Magelight.Call(viewId, "lpReceive", "3|" + id + "|" + op + "|" + status + "|" + n + "|" + value)
+EndFunction
+
+string Function ReadChronicleHistory(Actor npc, int slot)
+    string storageKey = "LivingPast.Chronicle.History" + slot
+    If !StorageUtil.HasStringValue(npc, storageKey)
+        Return ""
+    EndIf
+    string value = StorageUtil.GetStringValue(npc, storageKey, "")
+    value = ReplaceProbeText(value, "%20", " ")
+    value = ReplaceProbeText(value, "%09", StringUtil.AsChar(9))
+    value = ReplaceProbeText(value, "%0A", StringUtil.AsChar(10))
+    value = ReplaceProbeText(value, "%0D", StringUtil.AsChar(13))
+    Return ReplaceProbeText(value, "%25", "%")
+EndFunction
+
+string Function ReadChronicleLabel(Actor npc, int slot)
+    string storageKey = "LivingPast.Chronicle.Label" + slot
+    If !StorageUtil.HasStringValue(npc, storageKey)
+        Return ""
+    EndIf
+    string value = StorageUtil.GetStringValue(npc, storageKey, "")
+    value = ReplaceProbeText(value, "%20", " ")
+    value = ReplaceProbeText(value, "%09", StringUtil.AsChar(9))
+    value = ReplaceProbeText(value, "%0A", StringUtil.AsChar(10))
+    value = ReplaceProbeText(value, "%0D", StringUtil.AsChar(13))
+    Return ReplaceProbeText(value, "%25", "%")
+EndFunction
+
+Function ChronicleEvent(string frame)
+    If !Magelight.IsVisible(viewId) || StringUtil.GetLength(frame) < 31
+        Return
+    EndIf
+    string id = StringUtil.Substring(frame, 2, 20)
+    string session = StringUtil.Substring(id, 0, 16)
+    string op = StringUtil.Substring(frame, 23, 1)
+    int digits = 3
+    int maxPayload = 160
+    If op == "L" || op == "P"
+        digits = 4
+        maxPayload = 4096
+    EndIf
+    int payloadStart = 28 + digits
+    string n = StringUtil.Substring(frame, 27, digits)
+    int i = 0
+    While i < 20
+        string c = StringUtil.Substring(id, i, 1)
+        If (i < 16 && StringUtil.Find("0123456789abcdef", c) < 0) || (i >= 16 && StringUtil.Find("0123456789", c) < 0)
+            Return
+        EndIf
+        i += 1
+    EndWhile
+    i = 0
+    While i < digits
+        If StringUtil.Find("0123456789", StringUtil.Substring(n, i, 1)) < 0
+            Return
+        EndIf
+        i += 1
+    EndWhile
+    int size = n as int
+    If StringUtil.Substring(frame, 22, 1) != "|" || StringUtil.Substring(frame, 24, 3) != "|Q|" || StringUtil.Substring(frame, payloadStart - 1, 1) != "|" || size > maxPayload || StringUtil.GetLength(frame) != payloadStart + size
+        Return
+    EndIf
+    string arg = StringUtil.Substring(frame, payloadStart)
+    int requestSequence = StringUtil.Substring(id, 16, 4) as int
+    If op == "O" && requestSequence == 1
+        chronicleActor = None
+        ActorBase expected = None
+        If arg == "1"
+            chronicleActor = Game.GetFormFromFile(0x0001A69A, "Skyrim.esm") as Actor
+            expected = Game.GetFormFromFile(0x00013BAB, "Skyrim.esm") as ActorBase
+        ElseIf arg == "2"
+            chronicleActor = Game.GetFormFromFile(0x0001A675, "Skyrim.esm") as Actor
+            expected = Game.GetFormFromFile(0x00013B99, "Skyrim.esm") as ActorBase
+        EndIf
+        If !chronicleActor || !expected || chronicleActor.GetActorBase() != expected
+            ChronicleReply(id, op, False, "")
+            Return
+        EndIf
+    EndIf
+    Actor npc = chronicleActor
+    If !npc || PapyrusUtil.GetVersion() <= 0
+        ChronicleReply(id, op, False, "")
+        Return
+    EndIf
+    string markerKey = "LivingPast.Chronicle.Revision"
+    int revision = StorageUtil.GetIntValue(npc, markerKey, 0)
+    int active = 0
+    If revision > 0
+        active = ((revision - 1) % 2) + 1
+    EndIf
+    bool ok = False
+    string result = ""
+    If op == "O" && (arg == "1" || arg == "2") && requestSequence == 1
+        probeSession = session
+        probeSequence = 1
+        probePrepared = False
+        chronicleLabel = ""
+        probeText = ""
+        probeLength = 0
+        probeReadSnapshot = ""
+        probeSnapshotSlot = 0
+        result = revision + "|" + ReadChronicleLabel(npc, active)
+        ok = True
+    ElseIf session == probeSession && requestSequence == probeSequence + 1 && Magelight.IsVisible(viewId)
+        probeSequence = requestSequence
+        int numericCount = 0
+        If op == "B" || op == "D"
+            numericCount = 4
+        ElseIf op == "R" || op == "J"
+            numericCount = 5
+        EndIf
+        i = 0
+        While i < numericCount
+            If i >= size || StringUtil.Find("0123456789", StringUtil.Substring(arg, i, 1)) < 0
+                ChronicleReply(id, op, False, "")
+                Return
+            EndIf
+            i += 1
+        EndWhile
+        If (op == "T" || op == "L") && size == 0 && active >= 0 && active <= 2
+            SendChronicleNarrative(id, op, npc, active)
+            Return
+        ElseIf op == "P"
+            result = arg
+            ok = True
+        ElseIf op == "H" && size > 0 && size <= 96 && ValidRelationship(arg)
+            chronicleLabel = arg
+            result = arg
+            ok = True
+        ElseIf op == "B" && size == 4 && chronicleLabel != ""
+            probeLength = arg as int
+            probeText = ""
+            probePrepared = False
+            probePrevious = revision
+            probeSlot = 1
+            If active == 1
+                probeSlot = 2
+            EndIf
+            ok = probeLength > 0 && probeLength <= 2048
+        ElseIf op == "D" && size > 4 && probeLength > 0 && !probePrepared
+            int offset = StringUtil.Substring(arg, 0, 4) as int
+            string part = StringUtil.Substring(arg, 4)
+            If offset == StringUtil.GetLength(probeText) && StringUtil.GetLength(probeText) + StringUtil.GetLength(part) <= probeLength
+                probeText += part
+                result = arg
+                ok = True
+            EndIf
+        ElseIf op == "S" && size == 0 && probeLength > 0 && StringUtil.GetLength(probeText) == probeLength && revision == probePrevious
+            StorageUtil.SetStringValue(npc, "LivingPast.Chronicle.History" + probeSlot, EncodeProbeText(probeText))
+            StorageUtil.SetStringValue(npc, "LivingPast.Chronicle.Label" + probeSlot, EncodeProbeText(chronicleLabel))
+            probePrepared = True
+            probeReadOffset = 0
+            ok = True
+        ElseIf (op == "R" || op == "J") && size == 5
+            int slot = StringUtil.Substring(arg, 0, 1) as int
+            int offset = StringUtil.Substring(arg, 1, 4) as int
+            bool readingProbe = slot == 3
+            If (slot == 0 && active > 0) || (readingProbe && probePrepared && offset == probeReadOffset)
+                If slot == 0
+                    slot = active
+                Else
+                    slot = probeSlot
+                EndIf
+                float started = Utility.GetCurrentRealTime()
+                string saved = probeReadSnapshot
+                If op == "J" || offset == 0 || probeSnapshotSlot != slot
+                    saved = ReadChronicleHistory(npc, slot)
+                    If op == "R"
+                        probeReadSnapshot = saved
+                        probeSnapshotSlot = slot
+                    EndIf
+                EndIf
+                int readMs = ((Utility.GetCurrentRealTime() - started) * 1000.0) as int
+                If offset <= StringUtil.GetLength(saved)
+                    int take = ProbeChunkLength(saved, offset)
+                    If take > 0
+                        result = StringUtil.Substring(saved, offset, take)
+                    ElseIf op == "R"
+                        probeReadSnapshot = ""
+                        probeSnapshotSlot = 0
+                    EndIf
+                    If readingProbe
+                        probeReadOffset += take
+                    EndIf
+                    ok = True
+                    If op == "J"
+                        result = readMs + "|1|" + result
+                    EndIf
+                EndIf
+            ElseIf slot == 0 && active == 0 && offset == 0
+                ok = True
+                If op == "J"
+                    result = "0|0|"
+                EndIf
+            EndIf
+        ElseIf op == "K" && size == 0 && probePrepared && probeReadOffset == probeLength && revision == probePrevious
+            If ReadChronicleLabel(npc, probeSlot) == chronicleLabel && revision < 2147483646
+                Actor player = Game.GetPlayer()
+                int index = 1
+                int available = 0
+                While index <= 5
+                    Form indexed = StorageUtil.GetFormValue(player, "LivingPast.Chronicle.Actor" + index, None)
+                    If indexed == npc
+                        available = index
+                        index = 6
+                    ElseIf available == 0 && (indexed == None || StorageUtil.GetIntValue(indexed, markerKey, 0) == 0)
+                        available = index
+                    EndIf
+                    index += 1
+                EndWhile
+                If available > 0
+                    StorageUtil.SetFormValue(player, "LivingPast.Chronicle.Actor" + available, npc)
+                    If StorageUtil.GetFormValue(player, "LivingPast.Chronicle.Actor" + available, None) == npc
+                        StorageUtil.SetIntValue(npc, markerKey, revision + 1)
+                        ok = StorageUtil.GetIntValue(npc, markerKey, 0) == revision + 1
+                    EndIf
+                EndIf
+            EndIf
+            probePrepared = False
+            probeLength = 0
+        EndIf
+    EndIf
+    ChronicleReply(id, op, ok, result)
+EndFunction
+
+Function SendChronicleNarrative(string id, string op, Actor npc, int active)
+    string saved = ""
+    int readCount = 0
+    float started = Utility.GetCurrentRealTime()
+    If active > 0
+        saved = ReadChronicleHistory(npc, active)
+        readCount = 1
+    EndIf
+    int readMs = ((Utility.GetCurrentRealTime() - started) * 1000.0) as int
+    int size = StringUtil.GetLength(saved)
+    If size > 2048 || (active > 0 && size == 0)
+        ChronicleReply(id, op, False, "")
+        Return
+    EndIf
+    If op == "L"
+        ChronicleReply(id, op, True, readMs + "|" + readCount + "|" + size + "|" + saved)
+        Return
+    EndIf
+    int offset = 0
+    While offset < size
+        If !Magelight.IsVisible(viewId) || probeSession != StringUtil.Substring(id, 0, 16)
+            Return
+        EndIf
+        int take = ProbeChunkLength(saved, offset)
+        If take == 0
+            ChronicleReply(id, op, False, "")
+            Return
+        EndIf
+        SendChronicleFrame(id, op, "C", offset + "|" + StringUtil.Substring(saved, offset, take))
+        offset += take
+    EndWhile
+    ChronicleReply(id, op, True, readMs + "|" + readCount + "|" + size)
+EndFunction
+
+Function ChronicleReply(string id, string op, bool ok, string value)
+    string status = "E"
+    If ok
+        status = "S"
+    EndIf
+    SendChronicleFrame(id, op, status, value)
+EndFunction
+
+Function SendChronicleFrame(string id, string op, string status, string value)
+    int count = StringUtil.GetLength(value)
+    string n = count as string
+    If count < 10
+        n = "00" + n
+    ElseIf count < 100
+        n = "0" + n
+    EndIf
+    If (op == "L" || op == "P") && count < 1000
+        n = "0" + n
+    EndIf
+    Magelight.Call(viewId, "lpReceive", "4|" + id + "|" + op + "|" + status + "|" + n + "|" + value)
 EndFunction
 
 Event OnLivingPastClose(string eventName, string strArg, float numArg, Form sender)

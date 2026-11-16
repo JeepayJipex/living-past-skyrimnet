@@ -1,18 +1,21 @@
-{# Experimental direct-dialogue probe, limited to Ysolda's placed reference. #}
+{# Direct dialogue history for the selected actor. #}
 {% if render_mode == "full" and default(task_at_end, false) and not exists("stealthHiddenPlayer") %}
 {% if exists("npc") and existsIn(npc, "UUID") and exists("responseTarget") and responseTarget and responseTarget.UUID != 0 %}
-{% set ysolda = formid_to_uuid(108186) %}
-{% if ysolda != 0 and npc.UUID == ysolda and is_player(responseTarget.UUID) %}
-{% set slot = papyrus_util("GetIntValue", npc.UUID, "LivingPast.Probe.Active", 0) %}
+{% if npc.UUID != 0 and is_player(responseTarget.UUID) %}
+{% set revision = papyrus_util("GetIntValue", npc.UUID, "LivingPast.Chronicle.Revision", 0) %}
+{% set slot = 0 %}
+{% if revision > 0 %}
+{% if odd(revision) %}{% set slot = 1 %}{% else %}{% set slot = 2 %}{% endif %}
+{% endif %}
 {% set history = "" %}
 {% set encodedKey = "" %}
 {% set legacyKey = "" %}
 {% if slot == 1 %}
-{% set encodedKey = "LivingPast.Probe.EncodedSlot1" %}
-{% set legacyKey = "LivingPast.Probe.Slot1" %}
+{% set encodedKey = "LivingPast.Chronicle.History1" %}
+{% set legacyKey = "LivingPast.Chronicle.History1" %}
 {% else if slot == 2 %}
-{% set encodedKey = "LivingPast.Probe.EncodedSlot2" %}
-{% set legacyKey = "LivingPast.Probe.Slot2" %}
+{% set encodedKey = "LivingPast.Chronicle.History2" %}
+{% set legacyKey = "LivingPast.Chronicle.History2" %}
 {% endif %}
 {% if length(encodedKey) > 0 %}
 {% if papyrus_util("HasStringValue", npc.UUID, encodedKey) %}
@@ -27,8 +30,14 @@
 {% endif %}
 {% endif %}
 {% if length(history) > 0 %}
+{% set label = papyrus_util("GetStringValue", npc.UUID, replace(encodedKey, "History", "Label"), "") %}
+{% set label = replace(replace(replace(replace(replace(label, "%20", " "), "%09", "\t"), "%0A", "\n"), "%0D", "\r"), "%25", "%") %}
+{% if length(label) > 0 and revision == papyrus_util("GetIntValue", npc.UUID, "LivingPast.Chronicle.Revision", 0) %}
 ## Your prior history with the player
+Your prior relationship: {{ replace(replace(label, "[", "("), "]", ")") }}
 {{ replace(replace(history, "[", "("), "]", ")") }}
+Let this history inform your tone and relevant memories naturally. Do not recite it unless it fits the conversation.
+{% endif %}
 {% endif %}
 {% endif %}
 {% endif %}

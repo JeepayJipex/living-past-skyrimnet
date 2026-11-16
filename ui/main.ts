@@ -1,169 +1,110 @@
 import './style.css';
-import { splitNarrative } from './narrative';
+import { ChronicleClient, validateLabel } from './chronicle-client';
 import { bytes } from './protocol';
-import { ProbeClient } from './probe-client';
+import { splitNarrative } from './narrative';
 
-declare global { interface Window { magelight?: { send(channel: string, payload: string): void }; lpReceive?: (payload: string) => void } }
-const description = document.querySelector<HTMLTextAreaElement>('#description')!;
-const replaceDraft = document.querySelector<HTMLButtonElement>('#replace-draft')!;
-const exactText = document.querySelector<HTMLInputElement>('#exact-text')!;
+declare global { interface Window { magelight?: { send(channel: string, payload: string): void }; lpReceive?: (payload: string) => void; lpGameLoaded?: () => void } }
+const actors = [{ id: '1', name: 'Ysolda' }, { id: '2', name: 'Carlotta Valentia' }];
+const people = document.querySelector<HTMLElement>('#people')!;
 const status = document.querySelector<HTMLElement>('#status')!;
 const feedback = document.querySelector<HTMLElement>('#feedback')!;
+const editor = document.querySelector<HTMLElement>('#editor')!;
+const empty = document.querySelector<HTMLElement>('#empty')!;
+const name = document.querySelector<HTMLElement>('#name')!;
+const label = document.querySelector<HTMLInputElement>('#label')!;
+const description = document.querySelector<HTMLTextAreaElement>('#description')!;
+const count = document.querySelector<HTMLElement>('#count')!;
 const apply = document.querySelector<HTMLButtonElement>('#apply')!;
 const close = document.querySelector<HTMLButtonElement>('#close')!;
-const count = document.querySelector<HTMLElement>('#count')!;
-const diagnostic = document.querySelector<HTMLElement>('#diagnostic')!;
-const refreshDiagnostic = document.querySelector<HTMLButtonElement>('#refresh-diagnostic')!;
-const index = document.querySelector<HTMLElement>('#relationship-index')!;
-const loadNarrative = document.querySelector<HTMLButtonElement>('#load-narrative')!;
-const loadMetrics = document.querySelector<HTMLElement>('#load-metrics')!;
-let client: ProbeClient | undefined;
-let diagnosticClient: ProbeClient | undefined;
-let ready = false;
+let client: ChronicleClient | undefined;
+let generation = 0;
+let selected = '';
+let revision = 0;
+let dirty = false;
 let busy = false;
-let activeSlot = 0;
-let loaded = false;
-let draft = '';
-function showDraft(text: string): void {
-  draft = text;
-  description.value = text;
-  description.readOnly = text.includes('\r');
-  replaceDraft.hidden = !description.readOnly;
-  exactText.value = JSON.stringify(text);
-}
-function update(): void {
-  count.textContent = `${bytes(draft)} / 2048 bytes`;
-  apply.disabled = !ready || busy || (activeSlot !== 0 && !loaded);
-  close.disabled = false;
-  refreshDiagnostic.disabled = busy || !window.magelight;
-  loadNarrative.disabled = !ready || busy || activeSlot === 0;
-}
-window.lpReceive = frame => { client?.receive(frame); diagnosticClient?.receive(frame); };
-function newSession(): string {
+let originalText = '';
+let textEdited = false;
+const index = new Map<string, { revision: number; label: string }>();
+function session(): ChronicleClient {
   const random = new Uint8Array(8); crypto.getRandomValues(random);
-  return Array.from(random, value => value.toString(16).padStart(2, '0')).join('');
+  return new ChronicleClient(Array.from(random, n => n.toString(16).padStart(2, '0')).join(''), frame => window.magelight!.send('lpEvent', frame));
 }
-async function diagnose(): Promise<void> {
-  if (!window.magelight || diagnosticClient) return;
-  const current = new ProbeClient(newSession(), frame => window.magelight!.send('lpEvent', frame));
-  diagnosticClient = current;
-  try {
-    const result = await current.diagnose();
-    if (diagnosticClient === current) diagnostic.textContent = `Storage diagnostic: ${result}`;
-  } catch (error) {
-    if (diagnosticClient === current) diagnostic.textContent = `Storage diagnostic unavailable: ${String(error)}`;
-  } finally {
-    if (diagnosticClient === current) diagnosticClient = undefined;
-    current.close();
-  }
+window.lpReceive = frame => client?.receive(frame);
+window.lpGameLoaded = () => { clearView(); if (document.visibilityState === 'visible') void open(); };
+function clearView(): void {
+  ++generation;
+  client?.close(); client = undefined;
+  selected = ''; revision = 0; dirty = false; busy = false;
+  originalText = ''; textEdited = false; index.clear();
+  label.value = ''; description.value = ''; name.textContent = '';
+  editor.hidden = true; empty.hidden = false; feedback.textContent = '';
+  render();
+}
+function render(): void {
+  people.replaceChildren(...actors.map(actor => {
+    const button = document.createElement('button');
+    button.className = 'person'; button.type = 'button'; button.disabled = busy;
+    const title = document.createElement('span'); title.textContent = actor.name;
+    const detail = document.createElement('small'); detail.textContent = index.get(actor.id)?.label || 'Add a shared history';
+    button.append(title, detail); button.setAttribute('aria-current', String(selected === actor.id));
+    button.addEventListener('click', () => void choose(actor.id)); return button;
+  }));
+  apply.disabled = busy || !selected;
+  count.textContent = `${bytes(description.value)} / 2048 bytes`;
 }
 async function open(): Promise<void> {
-  const started = performance.now();
-  client?.close();
-  client = undefined; ready = false; busy = false; activeSlot = 0; loaded = false; showDraft('');
-  index.textContent = 'Loading relationship index.';
-  loadMetrics.textContent = '';
-  update();
-  if (!window.magelight) { status.textContent = 'Browser preview'; return; }
-  const current = new ProbeClient(newSession(), frame => window.magelight!.send('lpEvent', frame));
-  client = current;
+  const turn = ++generation; client?.close(); selected = ''; dirty = false; busy = true; index.clear(); editor.hidden = true; empty.hidden = false; render();
+  if (!window.magelight) { status.textContent = 'Available in Skyrim'; busy = false; render(); return; }
   try {
-    const requestStarted = performance.now();
-    const slot = await current.openIndex();
-    if (client !== current) return;
-    activeSlot = slot;
-    ready = true;
-    status.textContent = 'Connected';
-    index.textContent = (slot ? 'Ysolda has a saved narrative.' : 'Ysolda has no saved narrative.')
-      + ' Index ready in ' + Math.round(performance.now() - started) + ' ms'
-      + ' (session request ' + Math.round(performance.now() - requestStarted) + ' ms, 1 round trip).';
-    feedback.textContent = slot ? 'Load the saved narrative to inspect it.' : 'Enter a narrative to activate the probe.';
-  } catch (error) {
-    if (client !== current) return;
-    status.textContent = 'Unavailable'; feedback.textContent = String(error);
-  }
-  update();
+    for (const actor of actors) {
+      client?.close(); const current = session(); client = current;
+      const entry = await current.openIndex(actor.id);
+      if (turn !== generation) return;
+      index.set(actor.id, entry);
+    }
+    status.textContent = 'Your chronicle'; feedback.textContent = '';
+  } catch (error) { if (turn !== generation) return; status.textContent = 'Unavailable'; feedback.textContent = String(error); }
+  busy = false; render();
 }
-loadNarrative.addEventListener('click', async () => {
-  let current = client;
-  if (!current || !ready || busy) return;
-  const expectedSlot = activeSlot;
-  const started = performance.now();
-  busy = true;
-  update();
+async function choose(id: string): Promise<void> {
+  if (busy || (dirty && !confirm('Discard your unsaved changes?'))) return;
+  const entry = index.get(id); if (!entry) return;
+  const turn = generation; busy = true; render();
+  client?.close(); let current = session(); client = current;
   try {
-    const result = await current.loadPreferred(expectedSlot, () => {
-      if (client !== current) throw new Error('View session changed');
-      current = new ProbeClient(newSession(), frame => window.magelight!.send('lpEvent', frame));
-      client = current;
-      return current;
-    });
-    if (client !== current) return;
-    showDraft(result.text);
-    loaded = true;
-    const editorMs = Math.round(performance.now() - started);
-    loadMetrics.textContent = [result.mode, bytes(result.text) + ' bytes', result.roundTrips + ' round trips',
-      result.replies + ' replies', result.reads + ' slot reads/decodes', result.storageMs + ' ms in storage/decode',
-      Math.round(result.transferMs) + ' ms transfer', editorMs + ' ms to populate the editor',
-      result.fallbackReason].filter(Boolean).join(' · ');
-    feedback.textContent = 'Saved narrative read back.';
-  } catch (error) {
-    if (client !== current) return;
-    current.close();
-    ready = false;
-    loadMetrics.textContent = 'Load failed after ' + Math.round(performance.now() - started) + ' ms. ' + String(error);
-    feedback.textContent = 'Could not load the saved narrative. Reopen to retry.';
-  }
-  busy = false;
-  update();
-});
+    const fresh = await current.openIndex(id);
+    let text = '';
+    if (fresh.revision) {
+      const result = await current.loadPreferred(id, fresh.revision, () => {
+        if (turn !== generation) throw new Error('View session changed');
+        current = session(); client = current; return current;
+      });
+      text = result.text;
+    }
+    if (turn !== generation) return;
+    selected = id; revision = fresh.revision; index.set(id, fresh);
+    name.textContent = actors.find(actor => actor.id === id)!.name;
+    label.value = fresh.label; description.value = text; originalText = text; textEdited = false; dirty = false;
+    editor.hidden = false; empty.hidden = true; feedback.textContent = '';
+  } catch (error) { if (turn !== generation) return; feedback.textContent = `Could not load this history. ${String(error)}`; }
+  busy = false; render();
+}
 apply.addEventListener('click', async () => {
-  const current = client;
-  const text = draft;
-  if (!current || !ready || busy || (activeSlot !== 0 && !loaded)) return;
-  try { splitNarrative(text); } catch (error) { feedback.textContent = String(error); return; }
-  busy = true; update();
+  const current = client; const id = selected; const turn = generation;
+  if (!current || !id || busy) return;
+  const text = textEdited ? description.value : originalText;
+  try { validateLabel(label.value); splitNarrative(text); } catch (error) { feedback.textContent = error instanceof Error ? error.message : String(error); return; }
+  busy = true; render();
   try {
-    await current.activate(text);
-    if (client !== current) return;
-    activeSlot = activeSlot === 1 ? 2 : 1;
-    loaded = true;
-    index.textContent = 'Ysolda has a saved narrative.';
-    feedback.textContent = 'Probe activated and read back. Save your game.';
-  } catch (error) {
-    if (client !== current) return;
-    ready = false; feedback.textContent = String(error) + ' Reopen to check active state.';
-  }
-  busy = false; update();
+    await current.activate(label.value, text);
+    if (turn !== generation) return;
+    revision += 1; index.set(id, { revision, label: label.value }); originalText = text; textEdited = false; dirty = false;
+    feedback.textContent = 'Your history is active. Save your game to keep it.';
+  } catch (error) { if (turn !== generation) return; feedback.textContent = `Could not confirm the save. Copy your draft and reopen the chronicle to check the active history. ${String(error)}`; client?.close(); }
+  busy = false; render();
 });
-description.addEventListener('input', () => {
-  draft = description.value;
-  exactText.value = JSON.stringify(draft);
-  update();
-});
-description.addEventListener('paste', event => {
-  if (!event.clipboardData || description.readOnly) return;
-  const pasted = event.clipboardData.getData('text/plain');
-  if (!pasted.includes('\r')) return;
-  event.preventDefault();
-  showDraft(draft.slice(0, description.selectionStart) + pasted + draft.slice(description.selectionEnd));
-  update();
-});
-replaceDraft.addEventListener('click', () => { showDraft(''); update(); description.focus(); });
-document.querySelector<HTMLButtonElement>('#load-exact-text')!.addEventListener('click', () => {
-  try {
-    const text: unknown = JSON.parse(exactText.value);
-    if (typeof text !== 'string') throw new Error('Enter a JSON string.');
-    splitNarrative(text);
-    showDraft(text);
-    update();
-    feedback.textContent = 'Exact draft loaded. Activate to save it to the probe.';
-  } catch (error) {
-    feedback.textContent = String(error);
-  }
-});
-function cancelSession(): void { const current = client; client = undefined; const diagnostics = diagnosticClient; diagnosticClient = undefined; ready = false; busy = false; current?.close(); diagnostics?.close(); update(); }
-refreshDiagnostic.addEventListener('click', () => void diagnose());
-close.addEventListener('click', () => { cancelSession(); window.magelight?.send('lpClose', 'close'); });
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void open(); else cancelSession(); });
+for (const input of [label, description]) input.addEventListener('input', () => { dirty = true; render(); });
+description.addEventListener('input', () => { textEdited = true; });
+close.addEventListener('click', () => { if (dirty && !confirm('Discard your unsaved changes?')) return; clearView(); window.magelight?.send('lpClose', 'close'); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void open(); else clearView(); });
 if (document.visibilityState === 'visible') void open();

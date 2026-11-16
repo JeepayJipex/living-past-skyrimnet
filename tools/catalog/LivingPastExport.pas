@@ -10,18 +10,13 @@ var
   unnamedCount, nonUniqueCount, conditionalCount, ambiguousCount: Integer;
 
 function JsonString(s: string): string;
-var i, c: Integer; ch: string;
+var i: Integer;
 begin
-  Result := '"';
-  for i := 1 to Length(s) do begin
-    ch := s[i];
-    c := Ord(ch[1]);
-    if ch = '"' then Result := Result + '\"'
-    else if ch = '\' then Result := Result + '\\'
-    else if c < 32 then Result := Result + '\u' + IntToHex(c, 4)
-    else Result := Result + ch;
-  end;
-  Result := Result + '"';
+  Result := StringReplace(s, '\', '\\', [rfReplaceAll]);
+  Result := StringReplace(Result, '"', '\"', [rfReplaceAll]);
+  for i := 0 to 31 do
+    Result := StringReplace(Result, Chr(i), '\u' + IntToHex(i, 4), [rfReplaceAll]);
+  Result := '"' + Result + '"';
 end;
 
 function Identity(e: IInterface): string;

@@ -28,7 +28,7 @@ Event OnPlayerLoadGame()
 EndEvent
 
 Function Setup()
-    discoveryForms = None
+    discoveryForms = Utility.CreateFormArray(0)
     discoverySession = ""
     int registration = SkyrimNetApi.RegisterDecorator("living_past_base_probe", "LP_S0_PlayerAlias", "NativeProbeMatch")
     Debug.Trace("[Living Past] Native probe decorator registration: " + registration)
@@ -805,7 +805,7 @@ EndFunction
 Function DiscoveryEvent(string id, string op, string arg, string session, int sequence)
     If op == "G" && sequence == 1 && arg == ""
         discoverySession = session
-        discoveryForms = None
+        discoveryForms = Utility.CreateFormArray(0)
         discoverySequence = sequence
         ChronicleReply(id, op, True, "")
         Return
@@ -815,7 +815,7 @@ Function DiscoveryEvent(string id, string op, string arg, string session, int se
         Return
     EndIf
     discoverySequence = sequence
-    If op == "N" && arg == "" && !discoveryForms
+    If op == "N" && arg == "" && discoveryForms.Length == 0
         Debug.Trace("[Living Past] Native probe calling GetAllForms(43)")
         float started = Utility.GetCurrentRealTime()
         discoveryForms = PO3_SKSEFunctions.GetAllForms(43)
@@ -826,7 +826,7 @@ Function DiscoveryEvent(string id, string op, string arg, string session, int se
         Else
             ChronicleReply(id, op, False, "")
         EndIf
-    ElseIf op == "F" && discoveryForms && arg == ((arg as int) as string)
+    ElseIf op == "F" && discoveryForms.Length > 0 && arg == ((arg as int) as string)
         SendDiscoveryPage(id, arg as int)
     ElseIf op == "U" && arg == ""
         ChronicleReply(id, op, True, NativeProbeSnapshot())
@@ -852,22 +852,37 @@ Function SendDiscoveryPage(string id, int start)
     int cursor = start
     string payload = ""
     float started = Utility.GetCurrentRealTime()
-    While cursor < discoveryForms.Length && cursor < start + 160
+    int limit = start + 160
+    If start == 0
+        limit = 16
+        Debug.Trace("[Living Past] Native probe starting catalog page 0")
+    EndIf
+    While cursor < discoveryForms.Length && cursor < limit
         ActorBase base = discoveryForms[cursor] as ActorBase
         If NamedUniqueBase(base)
             string row = cursor + "|" + EncodeDiscoveryField(PO3_SKSEFunctions.GetFormModName(base, False)) + "|" + EncodeDiscoveryField(base.GetName()) + StringUtil.AsChar(10)
             If StringUtil.GetLength(row) <= 3840
                 If StringUtil.GetLength(payload) + StringUtil.GetLength(row) > 3840
-                    int elapsed = ((Utility.GetCurrentRealTime() - started) * 1000.0) as int
-                    ChronicleReply(id, "F", True, cursor + "|" + elapsed + "|" + payload)
+                    ReplyDiscoveryPage(id, start, cursor, started, payload)
                     Return
                 EndIf
                 payload += row
             EndIf
         EndIf
         cursor += 1
+        If (cursor - start) % 4 == 0 && Utility.GetCurrentRealTime() - started >= 0.250
+            ReplyDiscoveryPage(id, start, cursor, started, payload)
+            Return
+        EndIf
     EndWhile
+    ReplyDiscoveryPage(id, start, cursor, started, payload)
+EndFunction
+
+Function ReplyDiscoveryPage(string id, int start, int cursor, float started, string payload)
     int elapsed = ((Utility.GetCurrentRealTime() - started) * 1000.0) as int
+    If start == 0
+        Debug.Trace("[Living Past] Native probe replying to catalog page 0 with " + StringUtil.GetLength(payload) + " row bytes in " + elapsed + " ms")
+    EndIf
     ChronicleReply(id, "F", True, cursor + "|" + elapsed + "|" + payload)
 EndFunction
 
@@ -889,12 +904,15 @@ string Function NativeProbeSnapshot()
 EndFunction
 
 string Function EncodeDiscoveryField(string value)
-    Return ReplaceProbeText(EncodeProbeText(value), "|", "%7C")
+    value = ReplaceProbeText(value, "%", "%25")
+    value = ReplaceProbeText(value, StringUtil.AsChar(10), "%0A")
+    value = ReplaceProbeText(value, StringUtil.AsChar(13), "%0D")
+    Return ReplaceProbeText(value, "|", "%7C")
 EndFunction
 
 bool Function StoreNativeProbe(string arg)
     int delimiter = StringUtil.Find(arg, "|")
-    If delimiter < 1 || !discoveryForms
+    If delimiter < 1 || discoveryForms.Length == 0
         Return False
     EndIf
     string indexText = StringUtil.Substring(arg, 0, delimiter)
@@ -934,7 +952,7 @@ Event OnLivingPastClose(string eventName, string strArg, float numArg, Form send
         Return
     EndIf
     discoverySession = ""
-    discoveryForms = None
+    discoveryForms = Utility.CreateFormArray(0)
     probeSession = ""
     probePrepared = False
     probeText = ""

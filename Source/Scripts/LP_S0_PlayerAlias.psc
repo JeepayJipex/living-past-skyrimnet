@@ -815,10 +815,18 @@ Function DiscoveryEvent(string id, string op, string arg, string session, int se
         Return
     EndIf
     discoverySequence = sequence
-    If op == "N" && arg == "" && discoveryForms.Length == 0
-        Debug.Trace("[Living Past] Native probe calling GetAllForms(43)")
+    If op == "N" && discoveryForms.Length == 0
+        string source = "GetAllForms(43)"
+        If arg != ""
+            source = "GetAllFormsInMod(" + arg + ", 43)"
+        EndIf
+        Debug.Trace("[Living Past] Native probe calling " + source)
         float started = Utility.GetCurrentRealTime()
-        discoveryForms = PO3_SKSEFunctions.GetAllForms(43)
+        If arg == ""
+            discoveryForms = PO3_SKSEFunctions.GetAllForms(43)
+        Else
+            discoveryForms = PO3_SKSEFunctions.GetAllFormsInMod(arg, 43)
+        EndIf
         int elapsed = ((Utility.GetCurrentRealTime() - started) * 1000.0) as int
         If discoveryForms.Length > 0
             Debug.Trace("[Living Past] Native probe enumerated " + discoveryForms.Length + " NPC forms in " + elapsed + " ms")

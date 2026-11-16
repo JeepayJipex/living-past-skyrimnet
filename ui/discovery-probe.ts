@@ -4,6 +4,8 @@ import { splitNarrative } from './narrative';
 type Candidate = { index: number; plugin: string; name: string; search: string };
 
 const start = document.querySelector<HTMLButtonElement>('#discover')!;
+const read = document.querySelector<HTMLButtonElement>('#discovery-read')!;
+const pluginFilter = document.querySelector<HTMLInputElement>('#discovery-plugin')!;
 const search = document.querySelector<HTMLInputElement>('#discovery-search')!;
 const results = document.querySelector<HTMLSelectElement>('#discovery-result')!;
 const history = document.querySelector<HTMLTextAreaElement>('#discovery-history')!;
@@ -36,6 +38,7 @@ function renderSearch() {
 }
 
 function updateButtons() {
+  read.disabled = start.disabled;
   save.disabled = !client || start.disabled || results.value === '';
   clear.disabled = !client || start.disabled;
 }
@@ -67,7 +70,7 @@ function reset() {
   updateButtons();
 }
 
-start.addEventListener('click', async () => {
+async function runProbe(enumerate: boolean) {
   reset();
   if (!window.magelight) return;
   const random = crypto.getRandomValues(new Uint8Array(8));
@@ -75,15 +78,23 @@ start.addEventListener('click', async () => {
   const current = new ChronicleClient(session, frame => window.magelight!.send('lpEvent', frame), 15000);
   client = current;
   start.disabled = true;
+  updateButtons();
   let phase = 'Magelight handshake';
   metrics.textContent = 'Checking the Magelight bridge…';
   try {
     await current.request('G');
     if (client !== current) return;
-    phase = 'GetAllForms(43)';
+    if (!enumerate) {
+      phase = 'Persisted test history readback';
+      await showSnapshot(current);
+      if (client === current) metrics.textContent = '';
+      return;
+    }
+    const plugin = pluginFilter.value.trim();
+    phase = plugin ? `GetAllFormsInMod(${plugin}, 43)` : 'GetAllForms(43)';
     metrics.textContent = 'Magelight handshake passed. Enumerating loaded NPC bases…';
     const started = performance.now();
-    const summary = /^(\d+)\|(\d+)$/.exec(await current.request('N'));
+    const summary = /^(\d+)\|(\d+)$/.exec(await current.request('N', plugin));
     if (!summary) throw new Error('Invalid enumeration reply');
     const total = Number(summary[1]);
     const enumeration = performance.now() - started;
@@ -130,7 +141,10 @@ start.addEventListener('click', async () => {
   } finally {
     if (client === current) { start.disabled = false; updateButtons(); }
   }
-});
+}
+
+start.addEventListener('click', () => void runProbe(true));
+read.addEventListener('click', () => void runProbe(false));
 
 search.addEventListener('input', renderSearch);
 results.addEventListener('change', updateButtons);

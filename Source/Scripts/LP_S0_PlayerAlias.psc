@@ -550,7 +550,7 @@ Function ChronicleEvent(string frame)
     EndIf
     string arg = StringUtil.Substring(frame, payloadStart)
     int requestSequence = StringUtil.Substring(id, 16, 4) as int
-    If op == "G" || op == "F" || op == "U" || op == "W" || op == "Y"
+    If op == "G" || op == "N" || op == "F" || op == "U" || op == "W" || op == "Y"
         DiscoveryEvent(id, op, arg, session, requestSequence)
         Return
     EndIf
@@ -805,7 +805,18 @@ EndFunction
 Function DiscoveryEvent(string id, string op, string arg, string session, int sequence)
     If op == "G" && sequence == 1 && arg == ""
         discoverySession = session
+        discoveryForms = None
         discoverySequence = sequence
+        ChronicleReply(id, op, True, "")
+        Return
+    EndIf
+    If session != discoverySession || sequence != discoverySequence + 1
+        ChronicleReply(id, op, False, "")
+        Return
+    EndIf
+    discoverySequence = sequence
+    If op == "N" && arg == "" && !discoveryForms
+        Debug.Trace("[Living Past] Native probe calling GetAllForms(43)")
         float started = Utility.GetCurrentRealTime()
         discoveryForms = PO3_SKSEFunctions.GetAllForms(43)
         int elapsed = ((Utility.GetCurrentRealTime() - started) * 1000.0) as int
@@ -815,14 +826,7 @@ Function DiscoveryEvent(string id, string op, string arg, string session, int se
         Else
             ChronicleReply(id, op, False, "")
         EndIf
-        Return
-    EndIf
-    If session != discoverySession || sequence != discoverySequence + 1
-        ChronicleReply(id, op, False, "")
-        Return
-    EndIf
-    discoverySequence = sequence
-    If op == "F" && discoveryForms && arg == ((arg as int) as string)
+    ElseIf op == "F" && discoveryForms && arg == ((arg as int) as string)
         SendDiscoveryPage(id, arg as int)
     ElseIf op == "U" && arg == ""
         ChronicleReply(id, op, True, NativeProbeSnapshot())

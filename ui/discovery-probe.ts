@@ -75,10 +75,15 @@ start.addEventListener('click', async () => {
   const current = new ChronicleClient(session, frame => window.magelight!.send('lpEvent', frame), 15000);
   client = current;
   start.disabled = true;
-  metrics.textContent = 'Enumerating loaded NPC bases…';
+  let phase = 'Magelight handshake';
+  metrics.textContent = 'Checking the Magelight bridge…';
   try {
+    await current.request('G');
+    if (client !== current) return;
+    phase = 'GetAllForms(43)';
+    metrics.textContent = 'Magelight handshake passed. Enumerating loaded NPC bases…';
     const started = performance.now();
-    const summary = /^(\d+)\|(\d+)$/.exec(await current.request('G'));
+    const summary = /^(\d+)\|(\d+)$/.exec(await current.request('N'));
     if (!summary) throw new Error('Invalid enumeration reply');
     const total = Number(summary[1]);
     const enumeration = performance.now() - started;
@@ -86,7 +91,9 @@ start.addEventListener('click', async () => {
     let pages = 0;
     let filterMs = 0;
     let slowestPage = 0;
+    metrics.textContent = `${total} loaded NPC bases. Native call ${summary[2]} ms, enumeration round trip ${enumeration.toFixed(0)} ms.`;
     while (cursor < total && client === current) {
+      phase = `Catalog page at index ${cursor}`;
       const pageStarted = performance.now();
       const reply = /^(\d+)\|(\d+)\|([\s\S]*)$/.exec(await current.request('F', String(cursor)));
       if (client !== current) return;
@@ -110,9 +117,16 @@ start.addEventListener('click', async () => {
       renderSearch();
       await new Promise<void>(resolve => setTimeout(resolve, 0));
     }
+    phase = 'Persisted test history readback';
     if (client === current) await showSnapshot(current);
   } catch (error) {
-    if (client === current) { reset(); status.textContent = String(error); }
+    if (client === current) {
+      current.close();
+      client = undefined;
+      start.disabled = false;
+      status.textContent = `${phase} failed. ${String(error)}`;
+      updateButtons();
+    }
   } finally {
     if (client === current) { start.disabled = false; updateButtons(); }
   }

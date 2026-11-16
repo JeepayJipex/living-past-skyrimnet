@@ -4,4 +4,18 @@
 <header class="topbar"><div><p class="eyebrow">Living Past</p><h1>The people who knew you</h1></div><span id="status" class="status" role="status">Opening chronicle</span></header>
 <div class="chronicle"><aside class="people"><h2>Your chronicle</h2><p class="hint">Choose someone who knew you before your adventure.</p><div id="people"></div><button id="close" class="secondary" type="button">Close</button></aside>
 <section class="card"><div id="empty"><h2>A life before Skyrim</h2><p>Choose a person to write the story you share.</p></div><div id="editor" hidden><p class="eyebrow ink">A shared history</p><h2 id="name"></h2><label for="label">Your relationship</label><input id="label" type="text" placeholder="Childhood friend, former mentor…" maxlength="96"><label for="description">Your shared past</label><textarea id="description" rows="12" placeholder="What did you experience together?"></textarea><p id="count" class="hint"></p><details><summary>Need inspiration?</summary><p>How did you meet? What brought you together, and how did you part?</p></details><div class="actions"><button id="apply" type="button">Save and activate</button></div></div><p id="feedback" class="feedback" role="status"></p></section></div>
-</main><script type="module" src="/main.ts"></script></body></html>
+<details id="native-probe">
+  <summary>Native NPC discovery probe</summary>
+  <button id="discover" type="button">Enumerate loaded NPC bases</button>
+  <p id="discovery-metrics" role="status"></p>
+  <label for="discovery-search">Search names and plugins</label>
+  <input id="discovery-search" type="search" disabled>
+  <label for="discovery-result">Matching actor bases</label>
+  <select id="discovery-result" size="6"></select>
+  <label for="discovery-history">One test history</label>
+  <textarea id="discovery-history" rows="3"></textarea>
+  <button id="discovery-save" type="button" disabled>Activate test history</button>
+  <button id="discovery-clear" type="button" disabled>Clear test history</button>
+  <p id="discovery-state" role="status"></p>
+</details>
+</main><script type="module" src="/main.ts"></script><script type="module" src="/discovery-probe.ts"></script></body></html>

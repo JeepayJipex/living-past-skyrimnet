@@ -3,7 +3,7 @@ import { splitNarrative } from './narrative.ts';
 
 type Pending = { id: string; op: string; chunks: string; resolve: (value: string) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> };
 export type LoadMode = 'baseline' | 'batch' | 'large';
-const wideFrame = (op: string) => op === 'L' || op === 'P';
+const wideFrame = (op: string) => ['L', 'P', 'F', 'U', 'W'].includes(op);
 
 export function validateLabel(label: string): void {
   if (!label.trim()) throw new Error('Enter a relationship label.');
@@ -45,7 +45,7 @@ export class ChronicleClient {
     });
   }
   receive(frame: string): void {
-    const match = /^4\|([0-9a-f]{16}[0-9]{4})\|([OBDSRKXTJLPH])\|([SEC])\|([0-9]{3,4})\|/.exec(frame);
+    const match = /^4\|([0-9a-f]{16}[0-9]{4})\|([OBDSRKXTJLPHGFUWY])\|([SEC])\|([0-9]{3,4})\|/.exec(frame);
     const pending = this.pending;
     if (!match || !pending || pending.id !== match[1] || pending.op !== match[2]) return;
     const value = frame.slice(match[0].length);

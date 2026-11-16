@@ -42,6 +42,18 @@ class Game {
   }
 }
 
+test('discovery pages and probe snapshots accept correlated UTF-8 wide replies', async () => {
+  let client;
+  client = new ChronicleClient('1234567890abcdef', frame => {
+    const [, id, op, , size, cursor] = frame.split('|');
+    const value = op === 'F' ? `160|2|12|Wyrmstooth.esp|Jónsi\n` : '1|Jónsi|Wyrmstooth.esp|Shared%20history';
+    assert.equal(size, String(bytes(cursor)).padStart(4, '0'));
+    client.receive(`4|${id}|${op}|S|${String(bytes(value)).padStart(4, '0')}|${value}`);
+  });
+  assert.equal(await client.request('F', '0'), '160|2|12|Wyrmstooth.esp|Jónsi\n');
+  assert.equal(await client.request('U'), '1|Jónsi|Wyrmstooth.esp|Shared%20history');
+});
+
 test('an overlong UTF-8 label leaves the session usable for correction', async () => {
   const game = new Game();
   const client = game.connect();

@@ -1,0 +1,41 @@
+name: Native catalog
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pin vcpkg
+        shell: pwsh
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$env:RUNNER_TEMP/vcpkg"
+          git -C "$env:RUNNER_TEMP/vcpkg" checkout 9e593bb18ea69cc5095e012465dcd675a822ed0d
+          & "$env:RUNNER_TEMP/vcpkg/bootstrap-vcpkg.bat" -disableMetrics
+      - name: Cache vcpkg packages
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/build/native/vcpkg_installed
+          key: native-vcpkg-${{ runner.os }}-${{ hashFiles('native/vcpkg.json', 'native/vcpkg-configuration.json', 'native/vcpkg-ports/**') }}
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S native -B build/native -A x64 "-DCMAKE_TOOLCHAIN_FILE=$env:RUNNER_TEMP/vcpkg/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Save vcpkg packages
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/build/native/vcpkg_installed
+          key: native-vcpkg-${{ runner.os }}-${{ hashFiles('native/vcpkg.json', 'native/vcpkg-configuration.json', 'native/vcpkg-ports/**') }}
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake --build build/native --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload DLL and Papyrus source
+        uses: actions/upload-artifact@v4
+        with:
+          name: LivingPastCatalog
+          path: |
+            build/native/Release/LivingPastCatalog.dll
+            native/LivingPastCatalog.psc
+          if-no-files-found: error

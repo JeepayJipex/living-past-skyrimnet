@@ -3,6 +3,23 @@
 {% if exists("npc") and existsIn(npc, "UUID") and exists("responseTarget") and responseTarget and responseTarget.UUID != 0 %}
 {% if npc.UUID != 0 and is_player(responseTarget.UUID) %}
 {% set revision = papyrus_util("GetIntValue", npc.UUID, "LivingPast.Chronicle.Revision", 0) %}
+{% if revision == 0 %}
+{% set playerRevision = papyrus_util("GetIntValue", responseTarget.UUID, "LivingPast.NativeProbe.Revision", 0) %}
+{% if playerRevision > 0 %}
+{% set match = living_past_base_probe(npc.UUID) %}
+{% if existsIn(match, "revision") and match.revision == playerRevision %}
+{% set probeKey = "LivingPast.NativeProbe.History2" %}
+{% if odd(playerRevision) %}{% set probeKey = "LivingPast.NativeProbe.History1" %}{% endif %}
+{% set probeHistory = papyrus_util("GetStringValue", responseTarget.UUID, probeKey, "") %}
+{% if length(probeHistory) > 0 and playerRevision == papyrus_util("GetIntValue", responseTarget.UUID, "LivingPast.NativeProbe.Revision", 0) %}
+{% set probeHistory = replace(replace(replace(replace(replace(probeHistory, "%20", " "), "%09", "\t"), "%0A", "\n"), "%0D", "\r"), "%25", "%") %}
+## Your prior history with the player
+{{ replace(replace(probeHistory, "[", "("), "]", ")") }}
+Let this history inform your tone and relevant memories naturally. Do not recite it unless it fits the conversation.
+{% endif %}
+{% endif %}
+{% endif %}
+{% endif %}
 {% set slot = 0 %}
 {% if revision > 0 %}
 {% if odd(revision) %}{% set slot = 1 %}{% else %}{% set slot = 2 %}{% endif %}

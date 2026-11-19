@@ -15,6 +15,9 @@ string probeReadSnapshot = ""
 int probeSnapshotSlot = 0
 Actor chronicleActor
 string chronicleLabel = ""
+Form[] discoveryForms
+string discoverySession = ""
+int discoverySequence
 
 Event OnInit()
     Setup()
@@ -25,6 +28,10 @@ Event OnPlayerLoadGame()
 EndEvent
 
 Function Setup()
+    discoveryForms = Utility.CreateFormArray(0)
+    discoverySession = ""
+    int registration = SkyrimNetApi.RegisterDecorator("living_past_base_probe", "LP_S0_PlayerAlias", "NativeProbeMatch")
+    Debug.Trace("[Living Past] Native probe decorator registration: " + registration)
     probeSession = ""
     probePrepared = False
     probeSequence = 0
@@ -516,7 +523,7 @@ Function ChronicleEvent(string frame)
     string op = StringUtil.Substring(frame, 23, 1)
     int digits = 3
     int maxPayload = 160
-    If op == "L" || op == "P"
+    If WideChronicleFrame(op)
         digits = 4
         maxPayload = 4096
     EndIf
@@ -543,6 +550,10 @@ Function ChronicleEvent(string frame)
     EndIf
     string arg = StringUtil.Substring(frame, payloadStart)
     int requestSequence = StringUtil.Substring(id, 16, 4) as int
+    If op == "G" || op == "N" || op == "F" || op == "U" || op == "W" || op == "Y" || op == "V"
+        DiscoveryEvent(id, op, arg, session, requestSequence)
+        Return
+    EndIf
     If op == "O" && requestSequence == 1
         chronicleActor = None
         ActorBase expected = None
@@ -754,16 +765,206 @@ Function SendChronicleFrame(string id, string op, string status, string value)
     ElseIf count < 100
         n = "0" + n
     EndIf
-    If (op == "L" || op == "P") && count < 1000
+    If WideChronicleFrame(op) && count < 1000
         n = "0" + n
     EndIf
     Magelight.Call(viewId, "lpReceive", "4|" + id + "|" + op + "|" + status + "|" + n + "|" + value)
+EndFunction
+
+bool Function WideChronicleFrame(string op)
+    Return op == "L" || op == "P" || op == "F" || op == "U" || op == "W"
+EndFunction
+
+bool Function NamedUniqueBase(ActorBase base) Global
+    If !base
+        Return False
+    EndIf
+    int formId = base.GetFormID()
+    Return formId != 7 && Math.LogicalAnd(Math.RightShift(formId, 24), 255) != 255 && base.IsUnique() && base.GetName() != ""
+EndFunction
+
+string Function NativeProbeMatch(Actor speaker) Global
+    If !speaker || speaker == Game.GetPlayer() || Math.LogicalAnd(Math.RightShift(speaker.GetFormID(), 24), 255) == 255
+        Return "{\"revision\":0}"
+    EndIf
+    float started = Utility.GetCurrentRealTime()
+    Actor player = Game.GetPlayer()
+    int revision = StorageUtil.GetIntValue(player, "LivingPast.NativeProbe.Revision", 0)
+    If revision > 0
+        int bank = ((revision - 1) % 2) + 1
+        ActorBase stored = StorageUtil.GetFormValue(player, "LivingPast.NativeProbe.Base" + bank, None) as ActorBase
+        If stored && stored == speaker.GetActorBase() && stored.IsUnique()
+            int milliseconds = ((Utility.GetCurrentRealTime() - started) * 1000.0) as int
+            Debug.Trace("[Living Past] Native probe speaker matched revision " + revision + " in " + milliseconds + " ms")
+            Return "{\"revision\":" + revision + "}"
+        EndIf
+    EndIf
+    Return "{\"revision\":0}"
+EndFunction
+
+Function DiscoveryEvent(string id, string op, string arg, string session, int sequence)
+    If op == "G" && sequence == 1 && arg == ""
+        discoverySession = session
+        discoveryForms = Utility.CreateFormArray(0)
+        discoverySequence = sequence
+        ChronicleReply(id, op, True, "")
+        Return
+    EndIf
+    If session != discoverySession || sequence != discoverySequence + 1
+        ChronicleReply(id, op, False, "")
+        Return
+    EndIf
+    discoverySequence = sequence
+    If op == "V" && arg == ""
+        int version = LivingPastCatalog.GetVersion()
+        Debug.Trace("[Living Past] Native DLL GetVersion returned " + version)
+        ChronicleReply(id, op, True, version as string)
+    ElseIf op == "N" && discoveryForms.Length == 0
+        string source = "GetAllForms(43)"
+        If arg != ""
+            source = "GetAllFormsInMod(" + arg + ", 43)"
+        EndIf
+        Debug.Trace("[Living Past] Native probe calling " + source)
+        float started = Utility.GetCurrentRealTime()
+        If arg == ""
+            discoveryForms = PO3_SKSEFunctions.GetAllForms(43)
+        Else
+            discoveryForms = PO3_SKSEFunctions.GetAllFormsInMod(arg, 43)
+        EndIf
+        int elapsed = ((Utility.GetCurrentRealTime() - started) * 1000.0) as int
+        If discoveryForms.Length > 0
+            Debug.Trace("[Living Past] Native probe enumerated " + discoveryForms.Length + " NPC forms in " + elapsed + " ms")
+            ChronicleReply(id, op, True, discoveryForms.Length + "|" + elapsed)
+        Else
+            ChronicleReply(id, op, False, "")
+        EndIf
+    ElseIf op == "F" && discoveryForms.Length > 0 && arg == ((arg as int) as string)
+        SendDiscoveryPage(id, arg as int)
+    ElseIf op == "U" && arg == ""
+        ChronicleReply(id, op, True, NativeProbeSnapshot())
+    ElseIf op == "W"
+        ChronicleReply(id, op, StoreNativeProbe(arg), "")
+    ElseIf op == "Y" && arg == ""
+        Actor player = Game.GetPlayer()
+        int revision = StorageUtil.GetIntValue(player, "LivingPast.NativeProbe.Revision", 0)
+        If revision > 0
+            StorageUtil.SetIntValue(player, "LivingPast.NativeProbe.Revision", -revision)
+        EndIf
+        ChronicleReply(id, op, True, "")
+    Else
+        ChronicleReply(id, op, False, "")
+    EndIf
+EndFunction
+
+Function SendDiscoveryPage(string id, int start)
+    If start < 0 || start >= discoveryForms.Length
+        ChronicleReply(id, "F", False, "")
+        Return
+    EndIf
+    int cursor = start
+    string payload = ""
+    float started = Utility.GetCurrentRealTime()
+    int limit = start + 160
+    If start == 0
+        limit = 16
+        Debug.Trace("[Living Past] Native probe starting catalog page 0")
+    EndIf
+    While cursor < discoveryForms.Length && cursor < limit
+        ActorBase base = discoveryForms[cursor] as ActorBase
+        If NamedUniqueBase(base)
+            string row = cursor + "|" + EncodeDiscoveryField(PO3_SKSEFunctions.GetFormModName(base, False)) + "|" + EncodeDiscoveryField(base.GetName()) + StringUtil.AsChar(10)
+            If StringUtil.GetLength(row) <= 3840
+                If StringUtil.GetLength(payload) + StringUtil.GetLength(row) > 3840
+                    ReplyDiscoveryPage(id, start, cursor, started, payload)
+                    Return
+                EndIf
+                payload += row
+            EndIf
+        EndIf
+        cursor += 1
+        If (cursor - start) % 4 == 0 && Utility.GetCurrentRealTime() - started >= 0.250
+            ReplyDiscoveryPage(id, start, cursor, started, payload)
+            Return
+        EndIf
+    EndWhile
+    ReplyDiscoveryPage(id, start, cursor, started, payload)
+EndFunction
+
+Function ReplyDiscoveryPage(string id, int start, int cursor, float started, string payload)
+    int elapsed = ((Utility.GetCurrentRealTime() - started) * 1000.0) as int
+    If start == 0
+        Debug.Trace("[Living Past] Native probe replying to catalog page 0 with " + StringUtil.GetLength(payload) + " row bytes in " + elapsed + " ms")
+    EndIf
+    ChronicleReply(id, "F", True, cursor + "|" + elapsed + "|" + payload)
+EndFunction
+
+string Function NativeProbeSnapshot()
+    Actor player = Game.GetPlayer()
+    int revision = StorageUtil.GetIntValue(player, "LivingPast.NativeProbe.Revision", 0)
+    If revision <= 0
+        Return "0|||"
+    EndIf
+    int bank = ((revision - 1) % 2) + 1
+    ActorBase base = StorageUtil.GetFormValue(player, "LivingPast.NativeProbe.Base" + bank, None) as ActorBase
+    string name = ""
+    string pluginName = ""
+    If base
+        name = EncodeDiscoveryField(base.GetName())
+        pluginName = EncodeDiscoveryField(PO3_SKSEFunctions.GetFormModName(base, False))
+    EndIf
+    Return revision + "|" + name + "|" + pluginName + "|" + StorageUtil.GetStringValue(player, "LivingPast.NativeProbe.History" + bank, "")
+EndFunction
+
+string Function EncodeDiscoveryField(string value)
+    value = ReplaceProbeText(value, "%", "%25")
+    value = ReplaceProbeText(value, StringUtil.AsChar(10), "%0A")
+    value = ReplaceProbeText(value, StringUtil.AsChar(13), "%0D")
+    Return ReplaceProbeText(value, "|", "%7C")
+EndFunction
+
+bool Function StoreNativeProbe(string arg)
+    int delimiter = StringUtil.Find(arg, "|")
+    If delimiter < 1 || discoveryForms.Length == 0
+        Return False
+    EndIf
+    string indexText = StringUtil.Substring(arg, 0, delimiter)
+    int index = indexText as int
+    If index < 0 || index >= discoveryForms.Length || indexText != (index as string)
+        Return False
+    EndIf
+    ActorBase base = discoveryForms[index] as ActorBase
+    string history = StringUtil.Substring(arg, delimiter + 1)
+    If !NamedUniqueBase(base) || history == "" || StringUtil.GetLength(history) > 2048
+        Return False
+    EndIf
+    Actor player = Game.GetPlayer()
+    int previous = StorageUtil.GetIntValue(player, "LivingPast.NativeProbe.Revision", 0)
+    int magnitude = previous
+    If magnitude < 0
+        magnitude = -magnitude
+    EndIf
+    If magnitude >= 2147483646
+        Return False
+    EndIf
+    int bank = (magnitude % 2) + 1
+    string baseKey = "LivingPast.NativeProbe.Base" + bank
+    string historyKey = "LivingPast.NativeProbe.History" + bank
+    string encoded = EncodeProbeText(history)
+    StorageUtil.SetFormValue(player, baseKey, base)
+    StorageUtil.SetStringValue(player, historyKey, encoded)
+    If StorageUtil.GetFormValue(player, baseKey, None) != base || StorageUtil.GetStringValue(player, historyKey, "") != encoded
+        Return False
+    EndIf
+    StorageUtil.SetIntValue(player, "LivingPast.NativeProbe.Revision", magnitude + 1)
+    Return True
 EndFunction
 
 Event OnLivingPastClose(string eventName, string strArg, float numArg, Form sender)
     If numArg as int != viewId
         Return
     EndIf
+    discoverySession = ""
+    discoveryForms = Utility.CreateFormArray(0)
     probeSession = ""
     probePrepared = False
     probeText = ""

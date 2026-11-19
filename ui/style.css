@@ -41,3 +41,14 @@ summary { cursor: pointer; }
 .chronicle .card { margin: 0; border: 0; }
 .ink { color: #765539; }
 @media (max-width: 760px) { .chronicle { grid-template-columns: 1fr; } .people { border-right: 0; border-bottom: 1px solid #c0b29b; } }
+.shell #native-probe {
+  max-width: 960px;
+  margin-inline: auto;
+  padding: 16px 24px;
+  background: #f7f1df;
+  color: #2d2118;
+}
+
+#discovery-result {
+  width: 100%;
+}

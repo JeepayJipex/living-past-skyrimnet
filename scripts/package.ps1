@@ -2,9 +2,12 @@ param(
     [Parameter(Mandatory = $true)][string]$Plugin,
     [Parameter(Mandatory = $true)][string]$Pex,
     [Parameter(Mandatory = $true)][string]$ContentValidator,
-    [string]$BaseTree
+    [string]$BaseTree,
+    [string]$NativeDll,
+    [string]$NativePex
 )
 $ErrorActionPreference = 'Stop'
+if ([bool]$NativeDll -ne [bool]$NativePex) { throw 'Supply both NativeDll and NativePex for the smoke package.' }
 if (-not (Test-Path -LiteralPath $Plugin -PathType Leaf) -or [IO.Path]::GetFileName($Plugin) -ne 'LivingPastStage0.esp') { throw 'Supply the locally created LivingPastStage0.esp.' }
 if (-not (Test-Path -LiteralPath $Pex -PathType Leaf) -or [IO.Path]::GetFileName($Pex) -ne 'LP_S0_PlayerAlias.pex') { throw 'Supply the compiled LP_S0_PlayerAlias.pex.' }
 $validatorArguments = @((Join-Path $PSScriptRoot "../content/jeepayjipex.living-past"))
@@ -20,10 +23,17 @@ New-Item -ItemType Directory -Force -Path (Join-Path $stage 'Scripts') | Out-Nul
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../build/Data/Magelight') -Destination $stage -Recurse
 Copy-Item -LiteralPath $Pex -Destination (Join-Path $stage 'Scripts/LP_S0_PlayerAlias.pex') -Force
 Copy-Item -LiteralPath $Plugin -Destination (Join-Path $stage 'LivingPastStage0.esp') -Force
+if ($NativeDll) {
+    if (-not (Test-Path -LiteralPath $NativeDll -PathType Leaf) -or -not (Test-Path -LiteralPath $NativePex -PathType Leaf)) { throw 'Native DLL or compiled declaration is missing.' }
+    New-Item -ItemType Directory -Force -Path (Join-Path $stage 'SKSE/Plugins') | Out-Null
+    Copy-Item -LiteralPath $NativeDll -Destination (Join-Path $stage 'SKSE/Plugins/LivingPastCatalog.dll') -Force
+    Copy-Item -LiteralPath $NativePex -Destination (Join-Path $stage 'Scripts/LivingPastCatalog.pex') -Force
+}
 New-Item -ItemType Directory -Force -Path (Join-Path $stage "SKSE/Plugins/SkyrimNet/external") | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "../content/jeepayjipex.living-past") -Destination (Join-Path $stage "SKSE/Plugins/SkyrimNet/external") -Recurse
 $output = Join-Path $PSScriptRoot '../dist/LivingPast-M3-Step2-Chronicle.zip'
+if ($NativeDll) { $output = Join-Path $PSScriptRoot '../dist/LivingPastCatalog-Smoke.zip' }
 New-Item -ItemType Directory -Force -Path (Split-Path $output) | Out-Null
 Compress-Archive -Path (Join-Path $stage 'Magelight'), (Join-Path $stage 'Scripts'), (Join-Path $stage 'LivingPastStage0.esp'), (Join-Path $stage 'SKSE') -DestinationPath $output -Force
-& (Join-Path $PSScriptRoot 'validate-package.ps1') -Archive $output
+& (Join-Path $PSScriptRoot 'validate-package.ps1') -Archive $output -NativeSmoke:([bool]$NativeDll)
 Write-Output "Created $output."

@@ -54,6 +54,16 @@ test('discovery pages and probe snapshots accept correlated UTF-8 wide replies',
   assert.equal(await client.request('U'), '1|Jónsi|Wyrmstooth.esp|Shared%20history');
 });
 
+test('native DLL version reply uses the correlated short frame', async () => {
+  let client;
+  client = new ChronicleClient('1234567890abcdef', frame => {
+    const [, id, op] = frame.split('|');
+    assert.equal(op, 'V');
+    client.receive(`4|${id}|V|S|001|1`);
+  });
+  assert.equal(await client.request('V'), '1');
+});
+
 test('an overlong UTF-8 label leaves the session usable for correction', async () => {
   const game = new Game();
   const client = game.connect();

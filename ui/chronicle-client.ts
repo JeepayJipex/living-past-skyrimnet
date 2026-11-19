@@ -45,7 +45,7 @@ export class ChronicleClient {
     });
   }
   receive(frame: string): void {
-    const match = /^4\|([0-9a-f]{16}[0-9]{4})\|([OBDSRKXTJLPHGNFUWY])\|([SEC])\|([0-9]{3,4})\|/.exec(frame);
+    const match = /^4\|([0-9a-f]{16}[0-9]{4})\|([OBDSRKXTJLPHGNFUWYV])\|([SEC])\|([0-9]{3,4})\|/.exec(frame);
     const pending = this.pending;
     if (!match || !pending || pending.id !== match[1] || pending.op !== match[2]) return;
     const value = frame.slice(match[0].length);

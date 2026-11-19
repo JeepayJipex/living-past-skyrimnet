@@ -550,7 +550,7 @@ Function ChronicleEvent(string frame)
     EndIf
     string arg = StringUtil.Substring(frame, payloadStart)
     int requestSequence = StringUtil.Substring(id, 16, 4) as int
-    If op == "G" || op == "N" || op == "F" || op == "U" || op == "W" || op == "Y"
+    If op == "G" || op == "N" || op == "F" || op == "U" || op == "W" || op == "Y" || op == "V"
         DiscoveryEvent(id, op, arg, session, requestSequence)
         Return
     EndIf
@@ -815,7 +815,11 @@ Function DiscoveryEvent(string id, string op, string arg, string session, int se
         Return
     EndIf
     discoverySequence = sequence
-    If op == "N" && discoveryForms.Length == 0
+    If op == "V" && arg == ""
+        int version = LivingPastCatalog.GetVersion()
+        Debug.Trace("[Living Past] Native DLL GetVersion returned " + version)
+        ChronicleReply(id, op, True, version as string)
+    ElseIf op == "N" && discoveryForms.Length == 0
         string source = "GetAllForms(43)"
         If arg != ""
             source = "GetAllFormsInMod(" + arg + ", 43)"

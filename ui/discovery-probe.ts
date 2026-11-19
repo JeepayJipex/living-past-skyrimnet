@@ -4,6 +4,8 @@ import { splitNarrative } from './narrative';
 type Candidate = { index: number; plugin: string; name: string; search: string };
 
 const start = document.querySelector<HTMLButtonElement>('#discover')!;
+const nativeTest = document.querySelector<HTMLButtonElement>('#native-test')!;
+const nativeStatus = document.querySelector<HTMLElement>('#native-test-status')!;
 const read = document.querySelector<HTMLButtonElement>('#discovery-read')!;
 const pluginFilter = document.querySelector<HTMLInputElement>('#discovery-plugin')!;
 const search = document.querySelector<HTMLInputElement>('#discovery-search')!;
@@ -39,6 +41,7 @@ function renderSearch() {
 
 function updateButtons() {
   read.disabled = start.disabled;
+  nativeTest.disabled = start.disabled;
   save.disabled = !client || start.disabled || results.value === '';
   clear.disabled = !client || start.disabled;
 }
@@ -145,6 +148,26 @@ async function runProbe(enumerate: boolean) {
 
 start.addEventListener('click', () => void runProbe(true));
 read.addEventListener('click', () => void runProbe(false));
+nativeTest.addEventListener('click', async () => {
+  reset();
+  if (!window.magelight) { nativeStatus.textContent = 'Magelight is unavailable.'; return; }
+  const random = crypto.getRandomValues(new Uint8Array(8));
+  const session = Array.from(random, byte => byte.toString(16).padStart(2, '0')).join('');
+  const current = new ChronicleClient(session, frame => window.magelight!.send('lpEvent', frame), 15000);
+  client = current;
+  start.disabled = true;
+  updateButtons();
+  nativeStatus.textContent = 'Testing native DLL…';
+  try {
+    await current.request('G');
+    const version = await current.request('V');
+    if (client === current) nativeStatus.textContent = `Native DLL version ${version}${version === '1' ? ' (expected).' : ' (expected 1).'}`;
+  } catch (error) {
+    if (client === current) nativeStatus.textContent = `Native DLL test failed. ${String(error)}`;
+  } finally {
+    if (client === current) { start.disabled = false; updateButtons(); }
+  }
+});
 
 search.addEventListener('input', renderSearch);
 results.addEventListener('change', updateButtons);

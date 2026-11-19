@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(LivingPastCatalog VERSION 0.1.0 LANGUAGES CXX)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 find_package(directxtk CONFIG REQUIRED)
 find_package(CommonLibSSE CONFIG REQUIRED)
 add_commonlibsse_plugin(LivingPastCatalog NAME "LivingPastCatalog" AUTHOR "Living Past" VERSION ${PROJECT_VERSION} USE_ADDRESS_LIBRARY SOURCES main.cpp)

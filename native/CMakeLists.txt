@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.25)
+project(LivingPastCatalog VERSION 0.1.0 LANGUAGES CXX)
+find_package(directxtk CONFIG REQUIRED)
+find_package(CommonLibSSE CONFIG REQUIRED)
+add_commonlibsse_plugin(LivingPastCatalog NAME "LivingPastCatalog" AUTHOR "Living Past" VERSION ${PROJECT_VERSION} USE_ADDRESS_LIBRARY SOURCES main.cpp)
+target_compile_features(LivingPastCatalog PRIVATE cxx_std_23)
+target_link_libraries(LivingPastCatalog PRIVATE CommonLibSSE::CommonLibSSE)
